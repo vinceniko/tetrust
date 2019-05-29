@@ -43,8 +43,8 @@ enum Color {
 impl Color {
     fn convert(&self) -> graphics::Color {
         match self {
-            Black => graphics::Color::from_rgba_u32(0x000000),
-            Green => graphics::Color::from_rgba_u32(0x22FF00)
+            Color::Black => graphics::Color::from_rgba_u32(0x000000),
+            Color::Green => graphics::Color::from_rgba_u32(0x22FF00)
         }
     }
 }
@@ -139,13 +139,14 @@ impl Game {
 
 #[derive(Debug)]
 struct Tetrinome {
+    kind: PieceKind,
     bones: Vec<Bone>,
     pivot: Option<Bone>,
 }
 
 impl Tetrinome {
     // from_layout instantiates a new tetrinome using the provided layout
-    fn from_layout(layout: String, color: Color) -> Self{
+    fn from_layout(layout: String, color: Color, kind: PieceKind) -> Self{
         let width = layout.find('\n').unwrap() as i16 + 1; // width in units not indices
     
         let mut pivot = None;
@@ -165,80 +166,90 @@ impl Tetrinome {
         
         Tetrinome {
             bones,
-            pivot
+            pivot,
+            kind
         }
     }
 
 
-    fn from_piece(piece: Piece) -> Tetrinome {
-        match piece {
-            Piece::I => Tetrinome::from_layout(
+    fn from_piece(kind: PieceKind) -> Tetrinome {
+        match kind {
+            PieceKind::I => Tetrinome::from_layout(
                 vec![
                     "----",
                     "xoxx",
                     "----",
                     "----"
                 ].join("\n"),
-                Color::Green
+                Color::Green,
+                kind,
             ),
-            Piece::L => Tetrinome::from_layout(
+            PieceKind::L => Tetrinome::from_layout(
                 vec![
                     "--x-",
                     "xxo-",
                     "----",
                     "----"
                 ].join("\n"),
-                Color::Green
-            ),Piece::J => Tetrinome::from_layout(
+                Color::Green,
+                kind,
+            ),
+            PieceKind::J => Tetrinome::from_layout(
                 vec![
                     "----",
                     "x---",
                     "xox-",
                     "----"
                 ].join("\n"),
-                Color::Green
+                Color::Green,
+                kind,
             ),
-            Piece::T => Tetrinome::from_layout(
+            PieceKind::T => Tetrinome::from_layout(
                 vec![
                     "--x-",
                     "-xox",
                     "----",
                     "----"
                 ].join("\n"),
-                Color::Green
+                Color::Green,
+                kind,
             ),
-            Piece::Z => Tetrinome::from_layout(
+            PieceKind::Z => Tetrinome::from_layout(
                 vec![
                     "----",
                     "xx--",
                     "-ox-",
                     "----"
                 ].join("\n"),
-                Color::Green
+                Color::Green,
+                kind,
             ),
-            Piece::S => Tetrinome::from_layout(
+            PieceKind::S => Tetrinome::from_layout(
                 vec![
                     "----",
                     "--xx",
                     "-xo-",
                     "----"
                 ].join("\n"),
-                Color::Green
+                Color::Green,
+                kind,
             ),
-            Piece::O => Tetrinome::from_layout(
+            PieceKind::O => Tetrinome::from_layout(
                 vec![
                     "----",
                     "-xx-",
                     "-xx-",
                     "----"
                 ].join("\n"),
-                Color::Green
-            )
+                Color::Green,
+                kind,
+            ),
         }
     }
 }
 
-enum Piece {
+#[derive(Debug)]
+enum PieceKind {
     L,
     J,
     I,
@@ -247,8 +258,6 @@ enum Piece {
     S,
     O,
 }
-
-struct LPiece (Tetrinome);
 
 fn main() {
     const GRID_WIDTH: i16 = 10;
@@ -265,11 +274,23 @@ fn main() {
         Timing::new(UPDATES_PER_SEC, MILLIS_PER_UPDATE)
     );
 
-    let z = Tetrinome::from_piece(Piece::O);
-    for bone in &z.bones {
+    let pieces: [Tetrinome; 7] = [
+        Tetrinome::from_piece(PieceKind::L),
+        Tetrinome::from_piece(PieceKind::J),
+        Tetrinome::from_piece(PieceKind::I),
+        Tetrinome::from_piece(PieceKind::T),
+        Tetrinome::from_piece(PieceKind::Z),
+        Tetrinome::from_piece(PieceKind::S),
+        Tetrinome::from_piece(PieceKind::O),
+    ];
+
+    for bone in &pieces[0].bones {
         println!("{:?}", bone.coord);
     }
-    println!("{:?}", z.pivot);    
+    println!("{:?}, {:?}", pieces[0].pivot, pieces[0].kind);    
     println!("{}", "\n");
-    println!("{:?}", Pos(15).pos_to_coord_grid(&game.grid));
+
+    for piece in pieces.into_iter() {
+        println!("{:?}", piece)
+    }
 }
