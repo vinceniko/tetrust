@@ -1,0 +1,9 @@
+[package]
+name = "tetrust"
+version = "0.1.0"
+authors = ["vinceniko"]
+edition = "2018"
+
+[dependencies]
+ggez = "0.4.4"
+nalgebra = "0.18.0"
