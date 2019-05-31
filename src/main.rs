@@ -6,6 +6,7 @@ use ggez::event::{KeyCode, KeyMods};
 use std::ops::{ Add, AddAssign };
 
 use rand::{thread_rng, Rng};
+use rand::distributions::{Distribution, Standard};
 
 use std::time::{Duration, Instant};
 
@@ -132,58 +133,6 @@ impl Bone {
     }
 }
 
-#[derive(Debug, Clone)]
-struct PlayingPiece {
-    tetrinome: Tetrinome,
-    offset: Coord,
-}
-
-impl PlayingPiece {
-    fn rand_tetrinome() -> Tetrinome {
-        let mut rng = thread_rng();
-        let i = rng.gen_range(0, NUM_PIECES) as usize;
-        
-        unsafe {
-            if let Some(pieces) = &PIECES {
-                pieces[i].clone()
-            } else {
-                panic!("piece array not initialized!")
-            }
-        }
-    }
-
-    // new at random x in region: width - 4
-    fn new(width: &i16) -> Self {
-        Self {
-            tetrinome: Self::rand_tetrinome(),
-            offset: Coord::rand_x_offset((4, width-4), -1),
-        }
-    }
-
-    // add offset
-    fn shift(&self, offset: Coord) -> Coord {
-        self.offset + offset
-    }
-
-    // replace offset
-    fn shift_to(&mut self, new_offset: Coord) {
-        self.offset = new_offset;
-    }
-
-    // set new offset based on adding offset
-    fn shift_change(&mut self, offset: &Coord) {
-        self.shift_to(self.shift(*offset))
-    }
-
-    fn get_offset_coords(&self) -> Vec<Coord> {
-        self.tetrinome.bones.iter().map(|bone| bone.coord + self.offset ).collect()
-    }
-
-    // fn push_from(&mut self, dir: &Direction) {
-    //     self.shift_change(&dir.opposite().into());
-    // }
-}
-
 enum Collision {
     Left,
     Right,
@@ -201,11 +150,6 @@ enum Collision {
 //         }
 //     }
 // }
-
-struct Block {
-    color: Color,
-    pos: Pos
-}
 
 #[derive(Debug, Clone)]
 struct Blocks (Vec<Option<Bone>>);
@@ -242,7 +186,7 @@ impl From<Vec<Option<Bone>>> for Blocks {
 #[derive(Debug, Clone)]
 struct Grid {
     blocks: Blocks,
-    curr_piece: PlayingPiece,
+    curr_piece: Tetrinome,
     width: i16,
     height: i16,
     size: i16, // total number of blocks
@@ -253,7 +197,7 @@ impl Grid {
     fn new(width: i16, height: i16, block_size: i16) -> Self {
         Self {
             blocks: vec![None; height as usize * width as usize].into(), // init to None (like null ptr)
-            curr_piece: PlayingPiece::new(&width),
+            curr_piece: Tetrinome::new(&width),
             width,
             height,
             size: width * height,
@@ -263,8 +207,7 @@ impl Grid {
 
     // commit the piece after a downwards collision 
     fn commit_piece(&mut self) {
-        for new_block in self.curr_piece.tetrinome.bones.iter_mut() {
-            new_block.coord += self.curr_piece.offset; // add offset for each block
+        for new_block in self.curr_piece.bones.iter_mut() {
             let new_pos = new_block.coord.coord_to_pos(self.width); // convert into pos and then usize for indexing
 
             self.blocks.set_block(new_pos, *new_block);
@@ -276,9 +219,11 @@ impl Grid {
         let end = start + self.width as usize; 
         for block in self.blocks.0[start..end].iter() {
             if let None = block {
+                println!("not clear {}", row);
                 return false
             }
         }
+        println!("clear {}", row);
         true
     }
 
@@ -290,38 +235,52 @@ impl Grid {
         }
     }
 
-    fn get_piece_rows(&self, piece: &PlayingPiece) -> Vec<i16> {
-        piece.tetrinome.bones.iter().map(|bone| bone.coord.y).collect()
+    fn get_piece_rows(&self, piece: &Tetrinome) -> Vec<i16> {
+        let mut ys: Vec<i16> = piece.bones.iter().map(|bone| bone.coord.y).collect();
+        ys.sort();
+        ys.dedup();
+        println!("{:?}", ys);
+        ys.into_iter().collect()
     }
 
-    fn shift_row_down(&mut self, row: i16) {
+    fn drop_row_down(&mut self, row: i16) -> u16 {
         let mut start = (row * self.width) as usize;
         let end = start + self.width as usize; 
-        for block in self.blocks.0.clone()[start..end].iter() {
-            if let Some(_) = block {
-                println!("{:?}", block);
+        let mut count: u16 = 0;
+        for block in self.blocks.0.clone()[start..end].iter_mut() {
+            if let Some(bone) = block {
+                bone.coord.y += 1;
+                println!("{:?}", bone);
                 self.blocks.0[start] = None;
                 self.blocks.0[start + self.width as usize] = *block;
+
+                count +=1;
             }
             start+=1;
         }
+        count
     }
 
     fn clear_row_if(&mut self) {
-        let rows = self.get_piece_rows(&self.curr_piece);
+        let rows = self.get_piece_rows(&self.curr_piece); // in asc order
 
-        for row in rows.iter() {
-            if self.check_row_full(row) {
-                self.clear_row(*row);
-                self.shift_row_down(*row-1);
+        // iterate from top to bottom checking for full rows, once found clear it, and iterate from bottom up to drop blocks down
+        for row in 0..=rows[rows.len()-1] {
+            if self.check_row_full(&row) {
+                self.clear_row(row);
+                for upper_row in (0..row).rev() {
+                    println!("tried {}", upper_row);
+                    if self.drop_row_down(upper_row) == 0 {
+                        println!("{}", "returned");
+                        break;
+                    }
+                }
             }
         }
     }
 
-    fn check_collision(&self, piece: &PlayingPiece, dir: &Direction, rot: &Rotation) -> Collision {
-        println!("{:?}", piece.offset);
-
-        for coord in piece.get_offset_coords() {
+    fn check_collision(&self, piece: &Tetrinome, dir: &Direction, rot: &Rotation) -> Collision {
+        for coord in piece.get_coords() {
             // out of bounds
             if coord.x < 0 {
                 return Collision::Left
@@ -352,15 +311,15 @@ impl Grid {
     // move_if is the actually called helper, taking a direction and determining whether or not to move
     fn move_if(&mut self, dir: Direction, rot: Rotation) {
         let mut new_piece = self.curr_piece.clone();
-        new_piece.shift_change(&dir.clone().into()); // translate new piece based on direction
-        new_piece.tetrinome.rotate(&rot); // do rotation
+        new_piece.trans_change(&dir.clone().into()); // translate new piece based on direction
+        new_piece.rotate(&rot); // do rotation
 
         let col_dir = self.check_collision(&new_piece, &dir, &rot);
         match col_dir { // check collision for new piece
             Collision::Under => { 
                 self.commit_piece(); 
                 self.clear_row_if(); 
-                self.curr_piece = PlayingPiece::new(&self.width); 
+                self.curr_piece = Tetrinome::new(&self.width); 
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
@@ -372,15 +331,15 @@ impl Grid {
         }
     }
 
-    fn draw_blocks(&self, ctx: &mut Context, bones: &Vec<Bone>, offset: &Coord) -> GameResult<()> {
+    fn draw_bones(&self, ctx: &mut Context, bones: &Vec<Bone>) -> GameResult<()> {
         let mesh = &mut graphics::MeshBuilder::new(); // apply new rect meshes to this mesh, faster than drawing each individual rectangle
 
         for bone in bones.iter() {
             let rect = mesh.rectangle(
                     graphics::DrawMode::fill(), 
                     graphics::Rect::new(
-                        ((bone.coord.x + offset.x) * self.block_size).into(),
-                        ((bone.coord.y + offset.y) * self.block_size).into(),
+                        ((bone.coord.x) * self.block_size).into(),
+                        ((bone.coord.y) * self.block_size).into(),
                         self.block_size.into(),
                         self.block_size.into(),
                     ), 
@@ -403,18 +362,14 @@ impl Grid {
         )
         .filter_map(Result::ok)
         .collect();
-        self.draw_blocks(ctx, &bones, &Coord{x:0, y:0})?;
+        self.draw_bones(ctx, &bones)?;
 
         Ok(())
     }
 
     fn draw_curr_piece(&self, ctx: &mut Context) -> GameResult<()> {
-        self.draw_blocks(ctx, &self.curr_piece.tetrinome.bones, &self.curr_piece.offset)?;
+        self.draw_bones(ctx, &self.curr_piece.bones)?;
         Ok(())
-    }
-
-    fn update(&mut self) {
-        
     }
 }
 
@@ -440,15 +395,17 @@ struct Timing {
     millis_per_update: u32,
     last_update: Instant,
     fall_update: Instant,
+    fall_rate: u32,
 }
 
 impl Timing {
-    fn new(updates_per_sec: u32, millis_per_update: u32, last_update: Instant, fall_update: Instant) -> Self {
+    fn new(updates_per_sec: u32, millis_per_update: u32, last_update: Instant, fall_update: Instant, fall_rate: u32) -> Self {
         Timing {
             updates_per_sec,
             millis_per_update,
             last_update,
             fall_update,
+            fall_rate
         }
     }
 }
@@ -457,12 +414,37 @@ impl Timing {
 struct Tetrinome {
     kind: PieceKind,
     bones: Vec<Bone>,
-    pivot: Option<Bone>,
+    pivot: Option<usize>,
 }
 
 impl Tetrinome {
+    fn new(width: &i16) -> Self {
+        let mut new_piece = rand::random::<Self>();
+        new_piece.trans_change(&Coord::rand_x_offset((4, width-4), 0)); // translate to random x in the middle of the grid
+        new_piece
+    }
+
+    // add offset
+    fn shift(&self, offset: Coord) -> Vec<Coord> {
+        self.bones.iter().map(|bone| bone.coord + offset ).collect()
+    }
+
+    // replace offset
+    fn trans_to(&mut self, new_coords: Vec<Coord>) {
+        self.bones.iter_mut().zip(new_coords).map(|(bone, new_coord)| bone.coord = new_coord ).collect()
+    }
+
+    // set new offset based on adding offset
+    fn trans_change(&mut self, offset: &Coord) {
+        self.trans_to(self.shift(*offset));
+    }
+
+    fn get_coords(&self) -> Vec<Coord> {
+        self.bones.iter().map(|bone| bone.coord ).collect()
+    }
+
     // from_layout instantiates a new tetrinome using the provided layout
-    fn from_layout(layout: String, color: Color, kind: PieceKind) -> Self{
+    fn from_layout(layout: String, color: Color, kind: PieceKind) -> Self {
         let width = layout.find('\n').unwrap() as i16 + 1; // width in units not indices
     
         let mut pivot = None;
@@ -471,11 +453,11 @@ impl Tetrinome {
         for (i, c) in layout.chars().enumerate() {
             if c == 'x' || c == 'o' {
                 let bone = Bone::new(color, Pos::from(i).pos_to_coord(width)); 
-                if c == 'o' {
-                    pivot = Some(bone);
-                }
-
                 bones.push(bone);
+                
+                if c == 'o' {
+                    pivot = Some(bones.len()-1);
+                }
             }
         }
         
@@ -487,7 +469,7 @@ impl Tetrinome {
     }
 
 
-    fn from_piece(kind: PieceKind) -> Tetrinome {
+    fn from_piece(kind: PieceKind) -> Self {
         match kind {
             PieceKind::I => Tetrinome::from_layout(
                 vec![
@@ -563,7 +545,8 @@ impl Tetrinome {
     }
 
     fn rotate(&mut self, rot: &Rotation) {
-        if let Some(pivot_bone) = self.pivot { // if the tetrinome has a pivot
+        if let Some(pivot_i) = self.pivot { // if the tetrinome has a pivot
+            let pivot = self.bones[pivot_i];
             for bone in self.bones.iter_mut() {
                 if let Rotation::None = rot { 
                 } else { // rotation not nothing
@@ -577,16 +560,33 @@ impl Tetrinome {
                     }
 
                     let coord_vec = Vector2::new(bone.coord.x, bone.coord.y);
-                        let pivot_vec = Vector2::new(pivot_bone.coord.x, pivot_bone.coord.y);
+                    let pivot_vec = Vector2::new(pivot.coord.x, pivot.coord.y);
 
-                        let pivot_offset = coord_vec - pivot_vec;
-                        
-                        let new_pivot_offset = rot_cw_matrix * pivot_offset;
+                    let pivot_offset = coord_vec - pivot_vec;
+                    
+                    let new_pivot_offset = rot_cw_matrix * pivot_offset;
 
-                        let new_coord = pivot_vec + new_pivot_offset;
+                    let new_coord = pivot_vec + new_pivot_offset;
 
-                        bone.coord = Coord{x: new_coord[0], y: new_coord[1]};
+                    bone.coord = Coord{x: new_coord[0], y: new_coord[1]};
                 }
+            }
+        }
+    }
+}
+
+// returns a random tetrinome with a random 1 step rotation in either direction but not translated
+impl Distribution<Tetrinome> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetrinome {
+        let i = rng.gen_range(0, 7) as usize;
+        
+        unsafe {
+            if let Some(pieces) = &PIECES {
+                let mut new_piece = pieces[i].clone();
+                new_piece.rotate(&rand::random::<Rotation>());
+                new_piece
+            } else {
+                panic!("piece array not initialized!")
             }
         }
     }
@@ -626,7 +626,7 @@ impl Game {
 impl EventHandler for Game {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         if Instant::now() - self.timing.last_update >= Duration::from_millis(self.timing.millis_per_update.into()) {
-            if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) { // gravity
+            if Instant::now() - self.timing.fall_update >= Duration::from_millis((self.timing.fall_rate).into()) { // gravity
                 self.grid.move_if(Direction::Down, Rotation::None);
 
                 let now = Instant::now();
@@ -661,7 +661,7 @@ impl EventHandler for Game {
         _repeat: bool,
     ) {
         self.grid.move_if(keycode.into(), keycode.into());
-        if let KeyCode::C = keycode {
+        if let KeyCode::Q = keycode {
             self.grid.blocks.clear();
         }
     }
@@ -714,6 +714,18 @@ enum Rotation {
     None,
 }
 
+// returns a random rotation to init a random Tetrinone
+impl Distribution<Rotation> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Rotation {
+        let i: i16 = rng.gen_range(0,3);
+        match i {
+            0 => Rotation::CW,
+            1 => Rotation::CCW,
+            _ => Rotation::None,
+        }
+    }
+}
+
 impl From<KeyCode> for Rotation {
     fn from(key: KeyCode) -> Self {
         match key {
@@ -750,13 +762,13 @@ static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
 
 fn main() ->GameResult<()> {
     let pieces: [Tetrinome; NUM_PIECES] = [
-        Tetrinome::from_piece(PieceKind::L),
-        Tetrinome::from_piece(PieceKind::J),
         Tetrinome::from_piece(PieceKind::I),
+        Tetrinome::from_piece(PieceKind::O),
+        Tetrinome::from_piece(PieceKind::L),
         Tetrinome::from_piece(PieceKind::T),
         Tetrinome::from_piece(PieceKind::Z),
         Tetrinome::from_piece(PieceKind::S),
-        Tetrinome::from_piece(PieceKind::O),
+        Tetrinome::from_piece(PieceKind::J),
     ];
     unsafe {
         PIECES = Some(pieces);
@@ -764,7 +776,7 @@ fn main() ->GameResult<()> {
     
     let grid = Grid::new(GRID_WIDTH, GRID_HEIGHT, PIXEL_SIZE);
     let display = Display::new(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    let timing = Timing::new(UPDATES_PER_SEC, MILLIS_PER_UPDATE, Instant::now(), Instant::now());
+    let timing = Timing::new(UPDATES_PER_SEC, MILLIS_PER_UPDATE, Instant::now(), Instant::now(), FALL_RATE);
 
     // Make a Context. vsync enabled by default
     let (ctx, events_loop) = &mut ContextBuilder::new("Tetrust", "vinceniko")
