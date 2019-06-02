@@ -474,7 +474,7 @@ impl Tetrinome {
     fn from_piece(kind: PieceKind) -> Self {
         match kind {
             PieceKind::I => Tetrinome::from_layout(
-                vec![
+                [
                     "----",
                     "xoxx",
                     "----",
@@ -484,7 +484,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::L => Tetrinome::from_layout(
-                vec![
+                [
                     "--x-",
                     "xxo-",
                     "----",
@@ -494,7 +494,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::J => Tetrinome::from_layout(
-                vec![
+                [
                     "x---",
                     "xox-",
                     "----",
@@ -504,7 +504,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::T => Tetrinome::from_layout(
-                vec![
+                [
                     "--x-",
                     "-xox",
                     "----",
@@ -514,7 +514,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::Z => Tetrinome::from_layout(
-                vec![
+                [
                     "xx--",
                     "-ox-",
                     "----",
@@ -524,7 +524,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::S => Tetrinome::from_layout(
-                vec![
+                [
                     "--xx",
                     "-xo-",
                     "----",
@@ -534,7 +534,7 @@ impl Tetrinome {
                 kind,
             ),
             PieceKind::O => Tetrinome::from_layout(
-                vec![
+                [
                     "-xx-",
                     "-xx-",
                     "----",
@@ -752,13 +752,16 @@ const GRID_WIDTH: i16 = 10;
 const GRID_HEIGHT: i16 = 20;
 const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
 const PIXEL_SIZE: i16 = 64;
+
 // Here we're defining how many quickly we want our game to update.
 const UPDATES_PER_SEC: u32 = 16;
 // And we get the milliseconds of delay that this update rate corresponds to.
 const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
 const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
+
 const DISPLAY_WIDTH: i16 = GRID_WIDTH * PIXEL_SIZE;
 const DISPLAY_HEIGHT: i16 = GRID_HEIGHT * PIXEL_SIZE;
+
 const TETRINOME_SIZE: usize = 4;
 
 static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
