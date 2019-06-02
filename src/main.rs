@@ -151,8 +151,8 @@ enum Collision {
 //     }
 // }
 
-#[derive(Debug, Clone)]
-struct Blocks (Vec<Option<Bone>>);
+#[derive(Clone)]
+struct Blocks ([Option<Bone>; GRID_SIZE as usize]);
 
 impl Blocks {
     fn set_block(&mut self, new_pos: Pos, bone: Bone) {
@@ -171,19 +171,19 @@ impl Blocks {
     }
 
     fn clear(&mut self) {
-        self.0 = vec![None; self.0.len()];
+        self.0 = [None; GRID_SIZE as usize];
     }
 }
 
-impl From<Vec<Option<Bone>>> for Blocks {
-    fn from(blocks: Vec<Option<Bone>>) -> Self {
+impl From<[Option<Bone>; GRID_SIZE as usize]> for Blocks {
+    fn from(blocks: [Option<Bone>; GRID_SIZE as usize]) -> Self {
         Self (
             blocks
         )
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct Grid {
     blocks: Blocks,
     curr_piece: Tetrinome,
@@ -196,7 +196,7 @@ struct Grid {
 impl Grid {
     fn new(width: i16, height: i16, block_size: i16) -> Self {
         Self {
-            blocks: vec![None; height as usize * width as usize].into(), // init to None (like null ptr)
+            blocks: [None; GRID_SIZE as usize].into(), // init to None (like null ptr)
             curr_piece: Tetrinome::new(&width),
             width,
             height,
@@ -331,7 +331,7 @@ impl Grid {
         }
     }
 
-    fn draw_bones(&self, ctx: &mut Context, bones: &Vec<Bone>) -> GameResult<()> {
+    fn draw_bones(&self, ctx: &mut Context, bones: &[Bone]) -> GameResult<()> { // bones is a slice of either a vec or an array
         let mesh = &mut graphics::MeshBuilder::new(); // apply new rect meshes to this mesh, faster than drawing each individual rectangle
 
         for bone in bones.iter() {
@@ -413,14 +413,14 @@ impl Timing {
 #[derive(Debug, Clone)]
 struct Tetrinome {
     kind: PieceKind,
-    bones: Vec<Bone>,
+    bones: [Bone; TETRINOME_SIZE],
     pivot: Option<usize>,
 }
 
 impl Tetrinome {
     fn new(width: &i16) -> Self {
         let mut new_piece = rand::random::<Self>();
-        new_piece.trans_change(&Coord::rand_x_offset((4, width-4), 0)); // translate to random x in the middle of the grid
+        new_piece.trans_change(&Coord::rand_x_offset((TETRINOME_SIZE as i16, width-TETRINOME_SIZE as i16), 0)); // translate to random x in the middle of the grid
         new_piece
     }
 
@@ -449,15 +449,17 @@ impl Tetrinome {
     
         let mut pivot = None;
         
-        let mut bones: Vec<Bone> = Vec::new();
+        let mut bones: [Bone; TETRINOME_SIZE] = [Bone::default(); TETRINOME_SIZE];
+        let mut bone_i: usize = 0;
         for (i, c) in layout.chars().enumerate() {
             if c == 'x' || c == 'o' {
                 let bone = Bone::new(color, Pos::from(i).pos_to_coord(width)); 
-                bones.push(bone);
+                bones[bone_i] = bone;
                 
                 if c == 'o' {
-                    pivot = Some(bones.len()-1);
+                    pivot = Some(bone_i);
                 }
+                bone_i+=1;
             }
         }
         
@@ -606,7 +608,6 @@ enum PieceKind {
     O,
 }
 
-#[derive(Debug)]
 struct Game {
     grid: Grid,
     display: Display,
@@ -749,6 +750,7 @@ impl Rotation {
 
 const GRID_WIDTH: i16 = 10;
 const GRID_HEIGHT: i16 = 20;
+const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
 const PIXEL_SIZE: i16 = 64;
 // Here we're defining how many quickly we want our game to update.
 const UPDATES_PER_SEC: u32 = 16;
@@ -757,6 +759,7 @@ const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
 const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 const DISPLAY_WIDTH: i16 = GRID_WIDTH * PIXEL_SIZE;
 const DISPLAY_HEIGHT: i16 = GRID_HEIGHT * PIXEL_SIZE;
+const TETRINOME_SIZE: usize = 4;
 
 static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
 
