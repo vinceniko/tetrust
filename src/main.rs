@@ -187,36 +187,28 @@ impl From<[Option<Bone>; GRID_SIZE as usize]> for Blocks {
 struct Grid {
     blocks: Blocks,
     curr_piece: Tetrinome,
-    width: i16,
-    height: i16,
-    size: i16, // total number of blocks
-    block_size: i16
 }
 
 impl Grid {
-    fn new(width: i16, height: i16, block_size: i16) -> Self {
+    fn new() -> Self {
         Self {
             blocks: [None; GRID_SIZE as usize].into(), // init to None (like null ptr)
-            curr_piece: Tetrinome::new(&width),
-            width,
-            height,
-            size: width * height,
-            block_size,
+            curr_piece: Tetrinome::new(&GRID_WIDTH),
         }
     }
 
     // commit the piece after a downwards collision 
     fn commit_piece(&mut self) {
         for new_block in self.curr_piece.bones.iter_mut() {
-            let new_pos = new_block.coord.coord_to_pos(self.width); // convert into pos and then usize for indexing
+            let new_pos = new_block.coord.coord_to_pos(GRID_WIDTH); // convert into pos and then usize for indexing
 
             self.blocks.set_block(new_pos, *new_block);
         }
     }
 
     fn check_row_full(&self, row: &i16) -> bool {
-        let start = (row * self.width) as usize;
-        let end = start + self.width as usize; 
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
         for block in self.blocks.0[start..end].iter() {
             if let None = block {
                 println!("not clear {}", row);
@@ -228,8 +220,8 @@ impl Grid {
     }
 
     fn clear_row(&mut self, row: i16) {
-        let start = (row * self.width) as usize;
-        let end = start + self.width as usize; 
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
         for block in self.blocks.0[start..end].iter_mut() {
             *block = None;
         }
@@ -244,15 +236,15 @@ impl Grid {
     }
 
     fn drop_row_down(&mut self, row: i16) -> u16 {
-        let mut start = (row * self.width) as usize;
-        let end = start + self.width as usize; 
+        let mut start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
         let mut count: u16 = 0;
         for block in self.blocks.0.clone()[start..end].iter_mut() {
             if let Some(bone) = block {
                 bone.coord.y += 1;
                 println!("{:?}", bone);
                 self.blocks.0[start] = None;
-                self.blocks.0[start + self.width as usize] = *block;
+                self.blocks.0[start + GRID_WIDTH as usize] = *block;
 
                 count +=1;
             }
@@ -284,12 +276,12 @@ impl Grid {
             // out of bounds
             if coord.x < 0 {
                 return Collision::Left
-            } else if coord.x >= self.width {
+            } else if coord.x >= GRID_WIDTH {
                 return Collision::Right
             }
-            if coord.y >= self.height {
+            if coord.y >= GRID_HEIGHT {
                 return Collision::Under
-            } else if let None = self.blocks.get_block(coord.coord_to_pos(self.width)) {
+            } else if let None = self.blocks.get_block(coord.coord_to_pos(GRID_WIDTH)) {
                 // empty block
             } else {
                 return match dir {
@@ -319,7 +311,7 @@ impl Grid {
             Collision::Under => { 
                 self.commit_piece(); 
                 self.clear_row_if(); 
-                self.curr_piece = Tetrinome::new(&self.width); 
+                self.curr_piece = Tetrinome::new(&GRID_WIDTH); 
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
@@ -338,10 +330,10 @@ impl Grid {
             let rect = mesh.rectangle(
                     graphics::DrawMode::fill(), 
                     graphics::Rect::new(
-                        ((bone.coord.x) * self.block_size).into(),
-                        ((bone.coord.y) * self.block_size).into(),
-                        self.block_size.into(),
-                        self.block_size.into(),
+                        ((bone.coord.x) * PIXEL_SIZE).into(),
+                        ((bone.coord.y) * PIXEL_SIZE).into(),
+                        PIXEL_SIZE.into(),
+                        PIXEL_SIZE.into(),
                     ), 
                     bone.color.into(),
                 ).build(ctx)?;
@@ -373,39 +365,17 @@ impl Grid {
     }
 }
 
-// pixels
-#[derive(Debug)]
-struct Display {
-    width: i16,
-    height: i16,
-}
-
-impl Display {
-    fn new(width: i16, height: i16) -> Self {
-        Display {
-            width: width,
-            height: height
-        }
-    }
-}
-
 #[derive(Debug)]
 struct Timing {
-    updates_per_sec: u32,
-    millis_per_update: u32,
     last_update: Instant,
     fall_update: Instant,
-    fall_rate: u32,
 }
 
 impl Timing {
-    fn new(updates_per_sec: u32, millis_per_update: u32, last_update: Instant, fall_update: Instant, fall_rate: u32) -> Self {
+    fn new(last_update: Instant, fall_update: Instant) -> Self {
         Timing {
-            updates_per_sec,
-            millis_per_update,
             last_update,
             fall_update,
-            fall_rate
         }
     }
 }
@@ -610,15 +580,13 @@ enum PieceKind {
 
 struct Game {
     grid: Grid,
-    display: Display,
     timing: Timing,
 }
 
 impl Game {
-    fn new(_ctx: &mut Context, grid: Grid, display: Display, timing: Timing) -> Self {
+    fn new(_ctx: &mut Context, grid: Grid, timing: Timing) -> Self {
         Game {
             grid,
-            display,
             timing,
         }
     }
@@ -626,8 +594,8 @@ impl Game {
 
 impl EventHandler for Game {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if Instant::now() - self.timing.last_update >= Duration::from_millis(self.timing.millis_per_update.into()) {
-            if Instant::now() - self.timing.fall_update >= Duration::from_millis((self.timing.fall_rate).into()) { // gravity
+        if Instant::now() - self.timing.last_update >= Duration::from_millis(MILLIS_PER_UPDATE.into()) {
+            if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) { // gravity
                 self.grid.move_if(Direction::Down, Rotation::None);
 
                 let now = Instant::now();
@@ -780,19 +748,18 @@ fn main() ->GameResult<()> {
         PIECES = Some(pieces);
     }
     
-    let grid = Grid::new(GRID_WIDTH, GRID_HEIGHT, PIXEL_SIZE);
-    let display = Display::new(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    let timing = Timing::new(UPDATES_PER_SEC, MILLIS_PER_UPDATE, Instant::now(), Instant::now(), FALL_RATE);
+    let grid = Grid::new();
+    let timing = Timing::new(Instant::now(), Instant::now());
 
     // Make a Context. vsync enabled by default
     let (ctx, events_loop) = &mut ContextBuilder::new("Tetrust", "vinceniko")
-        .window_mode(conf::WindowMode::default().dimensions(display.width.into(), display.height.into()))
+        .window_mode(conf::WindowMode::default().dimensions(DISPLAY_WIDTH.into(), DISPLAY_HEIGHT.into()))
         .build()?;
 
     // Create an instance of your event handler.
     // Usually, you should provide it with the Context object to
     // use when setting your game up.
-    let game = &mut Game::new(ctx, grid, display, timing);
+    let game = &mut Game::new(ctx, grid, timing);
 
    event::run(ctx, events_loop, game)
 }
