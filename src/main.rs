@@ -173,6 +173,53 @@ impl Blocks {
     fn clear(&mut self) {
         self.0 = [None; GRID_SIZE as usize];
     }
+
+    fn check_row_full(&self, row: &i16) -> bool {
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
+        for block in self.0[start..end].iter() {
+            if let None = block {
+                println!("not clear {}", row);
+                return false
+            }
+        }
+        println!("clear {}", row);
+        true
+    }
+
+    fn clear_row(&mut self, row: i16) {
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
+        for block in self.0[start..end].iter_mut() {
+            *block = None;
+        }
+    }
+
+    fn get_piece_rows(&self, piece: &Tetrinome) -> Vec<i16> {
+        let mut ys: Vec<i16> = piece.bones.iter().map(|bone| bone.coord.y).collect();
+        ys.sort();
+        ys.dedup();
+        println!("{:?}", ys);
+        ys.into_iter().collect()
+    }
+
+    fn drop_row_down(&mut self, row: i16) -> u16 {
+        let mut start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize; 
+        let mut count: u16 = 0;
+        for block in self.0.clone()[start..end].iter_mut() {
+            if let Some(bone) = block {
+                bone.coord.y += 1;
+                println!("{:?}", bone);
+                self.0[start] = None;
+                self.0[start + GRID_WIDTH as usize] = *block;
+
+                count +=1;
+            }
+            start+=1;
+        }
+        count
+    }
 }
 
 impl From<[Option<Bone>; GRID_SIZE as usize]> for Blocks {
@@ -206,63 +253,16 @@ impl Grid {
         }
     }
 
-    fn check_row_full(&self, row: &i16) -> bool {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
-        for block in self.blocks.0[start..end].iter() {
-            if let None = block {
-                println!("not clear {}", row);
-                return false
-            }
-        }
-        println!("clear {}", row);
-        true
-    }
-
-    fn clear_row(&mut self, row: i16) {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
-        for block in self.blocks.0[start..end].iter_mut() {
-            *block = None;
-        }
-    }
-
-    fn get_piece_rows(&self, piece: &Tetrinome) -> Vec<i16> {
-        let mut ys: Vec<i16> = piece.bones.iter().map(|bone| bone.coord.y).collect();
-        ys.sort();
-        ys.dedup();
-        println!("{:?}", ys);
-        ys.into_iter().collect()
-    }
-
-    fn drop_row_down(&mut self, row: i16) -> u16 {
-        let mut start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
-        let mut count: u16 = 0;
-        for block in self.blocks.0.clone()[start..end].iter_mut() {
-            if let Some(bone) = block {
-                bone.coord.y += 1;
-                println!("{:?}", bone);
-                self.blocks.0[start] = None;
-                self.blocks.0[start + GRID_WIDTH as usize] = *block;
-
-                count +=1;
-            }
-            start+=1;
-        }
-        count
-    }
-
     fn clear_row_if(&mut self) {
-        let rows = self.get_piece_rows(&self.curr_piece); // in asc order
+        let rows = self.blocks.get_piece_rows(&self.curr_piece); // in asc order
 
         // iterate from top to bottom checking for full rows, once found clear it, and iterate from bottom up to drop blocks down
         for row in 0..=rows[rows.len()-1] {
-            if self.check_row_full(&row) {
-                self.clear_row(row);
+            if self.blocks.check_row_full(&row) {
+                self.blocks.clear_row(row);
                 for upper_row in (0..row).rev() {
                     println!("tried {}", upper_row);
-                    if self.drop_row_down(upper_row) == 0 {
+                    if self.blocks.drop_row_down(upper_row) == 0 {
                         println!("{}", "returned");
                         break;
                     }
