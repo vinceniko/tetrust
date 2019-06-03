@@ -245,7 +245,7 @@ impl Blocks {
                         _ => Collision::None,
                     }
                 }
-}
+            }
         }
 
         Collision::None
