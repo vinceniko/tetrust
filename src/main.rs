@@ -133,6 +133,7 @@ impl Bone {
     }
 }
 
+#[derive(Debug)]
 enum Collision {
     Left,
     Right,
@@ -140,16 +141,16 @@ enum Collision {
     None,
 }
 
-// impl Collision {
-//     fn to_dir(&self) -> Direction {
-//         match self {
-//             Collision::Left => Direction::Left,
-//             Collision::Right => Direction::Left,
-//             Collision::Under => Direction::Down,
-//             Collision::None => Direction::None,
-//         }
-//     }
-// }
+impl Collision {
+    fn to_dir(&self) -> Direction {
+        match self {
+            Collision::Left => Direction::Left,
+            Collision::Right => Direction::Right,
+            Collision::Under => Direction::Down,
+            Collision::None => Direction::None,
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Blocks ([Option<Bone>; GRID_SIZE as usize]);
@@ -174,7 +175,7 @@ impl Blocks {
         self.0 = [None; GRID_SIZE as usize];
     }
 
-    fn check_row_full(&self, row: &i16) -> bool {
+    fn row_full(&self, row: &i16) -> bool {
         let start = (row * GRID_WIDTH) as usize;
         let end = start + GRID_WIDTH as usize; 
         for block in self.0[start..end].iter() {
@@ -220,6 +221,35 @@ impl Blocks {
         }
         count
     }
+
+    fn check_collision(&self, piece: &Tetrinome, dir: &Direction, rot: &Rotation) -> Collision {
+        for coord in piece.get_coords() {
+            // out of bounds
+            if coord.x < 0 {
+                return Collision::Left
+            } else if coord.x >= GRID_WIDTH {
+                return Collision::Right
+            }
+            if coord.y >= GRID_HEIGHT {
+                return Collision::Under
+            } else if let None = self.get_block(coord.coord_to_pos(GRID_WIDTH)) {
+                // empty block
+            } else {
+                return match dir {
+                    Direction::Down => Collision::Under,
+                    Direction::Left => Collision::Left,
+                    Direction::Right => Collision::Right,
+                    Direction::None => match rot.to_dir() {
+                        Direction::Left => Collision::Left,
+                        Direction::Right => Collision::Right,
+                        _ => Collision::None,
+                    }
+                }
+}
+        }
+
+        Collision::None
+    }
 }
 
 impl From<[Option<Bone>; GRID_SIZE as usize]> for Blocks {
@@ -258,7 +288,7 @@ impl Grid {
 
         // iterate from top to bottom checking for full rows, once found clear it, and iterate from bottom up to drop blocks down
         for row in 0..=rows[rows.len()-1] {
-            if self.blocks.check_row_full(&row) {
+            if self.blocks.row_full(&row) {
                 self.blocks.clear_row(row);
                 for upper_row in (0..row).rev() {
                     println!("tried {}", upper_row);
@@ -271,42 +301,13 @@ impl Grid {
         }
     }
 
-    fn check_collision(&self, piece: &Tetrinome, dir: &Direction, rot: &Rotation) -> Collision {
-        for coord in piece.get_coords() {
-            // out of bounds
-            if coord.x < 0 {
-                return Collision::Left
-            } else if coord.x >= GRID_WIDTH {
-                return Collision::Right
-            }
-            if coord.y >= GRID_HEIGHT {
-                return Collision::Under
-            } else if let None = self.blocks.get_block(coord.coord_to_pos(GRID_WIDTH)) {
-                // empty block
-            } else {
-                return match dir {
-                    Direction::Down => Collision::Under,
-                    Direction::Left => Collision::Left,
-                    Direction::Right => Collision::Right,
-                    Direction::None => match rot.to_dir() {
-                        Direction::Left => Collision::Left,
-                        Direction::Right => Collision::Right,
-                        _ => Collision::None,
-                    }
-                }
-            }
-        }
-
-        Collision::None
-    }
-
     // move_if is the actually called helper, taking a direction and determining whether or not to move
     fn move_if(&mut self, dir: Direction, rot: Rotation) {
         let mut new_piece = self.curr_piece.clone();
         new_piece.trans_change(&dir.clone().into()); // translate new piece based on direction
         new_piece.rotate(&rot); // do rotation
 
-        let col_dir = self.check_collision(&new_piece, &dir, &rot);
+        let col_dir = self.blocks.check_collision(&new_piece, &dir, &rot);
         match col_dir { // check collision for new piece
             Collision::Under => { 
                 self.commit_piece(); 
@@ -315,8 +316,18 @@ impl Grid {
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
-                    // self.curr_piece.push_from(&col_dir.to_dir().opposite());
-                    // self.curr_piece.tetrinome.rotate(&rot);
+                    let new_dir = &col_dir.to_dir().opposite();
+                    println!("widths: {:?}, {:?}", new_piece.get_width(), new_piece.get_width() / 2);
+                    for _ in 0..new_piece.get_width()/2 {
+                        new_piece.trans_change(&new_dir.clone().into());
+                    }
+                    let new_col = self.blocks.check_collision(&new_piece, &new_dir, &Rotation::None);
+                    if let Collision::None = new_col {
+                        println!("{}", true);
+                        self.curr_piece = new_piece;
+                    } else {
+                        println!("{:?}, {:?}", new_dir, new_col);
+                    }
                 }
             }, // collided on the side, nothing happens
             Collision::None => self.curr_piece = new_piece, // no collision, then move
@@ -440,6 +451,10 @@ impl Tetrinome {
         }
     }
 
+    fn get_width(&self) -> i16 {
+        let xs = self.bones.iter().map(|bone| bone.coord.x );
+        xs.clone().max().unwrap() - xs.min().unwrap() + 1 // TODO: is the clone necessary? moved value xs where first clone
+    }
 
     fn from_piece(kind: PieceKind) -> Self {
         match kind {
@@ -456,7 +471,7 @@ impl Tetrinome {
             PieceKind::L => Tetrinome::from_layout(
                 [
                     "--x-",
-                    "xxo-",
+                    "xox-",
                     "----",
                     "----",
                 ].join("\n"),
@@ -667,15 +682,15 @@ impl Into<Coord> for Direction {
     }
 }
 
-// impl Direction {
-//     fn opposite(&self) -> Self {
-//         match self {
-//             Direction::Left => Direction::Right,
-//             Direction::Right => Direction::Left,
-//             _ => Direction::None,
-//         }
-//     }
-// }
+impl Direction {
+    fn opposite(&self) -> Self {
+        match self {
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+            _ => Direction::None,
+        }
+    }
+}
 
 enum Rotation {
     CW,
@@ -753,6 +768,7 @@ fn main() ->GameResult<()> {
 
     // Make a Context. vsync enabled by default
     let (ctx, events_loop) = &mut ContextBuilder::new("Tetrust", "vinceniko")
+        .window_setup(conf::WindowSetup::default().title("Tetrust"))
         .window_mode(conf::WindowMode::default().dimensions(DISPLAY_WIDTH.into(), DISPLAY_HEIGHT.into()))
         .build()?;
 
