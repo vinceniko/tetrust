@@ -84,6 +84,105 @@ impl Pos {
     }
 }
 
+#[derive(Debug,Clone)]
+enum Direction {
+    Down,
+    Left, 
+    Right,
+    None
+}
+
+impl From<KeyCode> for Direction {
+    fn from(key: KeyCode) -> Self {
+        match key {
+            // move in a direction
+            KeyCode::Down => Direction::Down,
+            KeyCode::Left => Direction::Left,
+            KeyCode::Right => Direction::Right,
+            _ => Direction::None
+        }
+    }
+}
+
+impl Into<Coord> for Direction {
+    fn into(self) -> Coord {
+        match self {
+            Direction::Down => Coord{x:0, y:1} ,
+            Direction::Left => Coord{x: -1, y: 0},
+            Direction::Right => Coord{x: 1, y: 0},
+            Direction::None => Coord::default(),
+        }
+    }
+}
+
+impl Direction {
+    fn opposite(&self) -> Self {
+        match self {
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
+            _ => Direction::None,
+        }
+    }
+}
+
+enum Rotation {
+    CW,
+    CCW,
+    None,
+}
+
+// returns a random rotation to init a random Tetrinone
+impl Distribution<Rotation> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Rotation {
+        let i: i16 = rng.gen_range(0,3);
+        match i {
+            0 => Rotation::CW,
+            1 => Rotation::CCW,
+            _ => Rotation::None,
+        }
+    }
+}
+
+impl From<KeyCode> for Rotation {
+    fn from(key: KeyCode) -> Self {
+        match key {
+            // move in a direction
+            KeyCode::Z => Rotation::CCW,
+            KeyCode::X => Rotation::CW,
+            _ => Rotation::None
+        }
+    }
+}
+
+impl Rotation {
+    fn to_dir(&self) -> Direction {
+        match self {
+            Rotation::CW => Direction::Right,
+            Rotation::CCW => Direction::Left,
+            _ => Direction::None
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Collision {
+    Left,
+    Right,
+    Under,
+    None,
+}
+
+impl Collision {
+    fn to_dir(&self) -> Direction {
+        match self {
+            Collision::Left => Direction::Left,
+            Collision::Right => Direction::Right,
+            Collision::Under => Direction::Down,
+            Collision::None => Direction::None,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 enum Color {
     Black,
@@ -129,25 +228,6 @@ impl Bone {
         Self {
             color,
             coord
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Collision {
-    Left,
-    Right,
-    Under,
-    None,
-}
-
-impl Collision {
-    fn to_dir(&self) -> Direction {
-        match self {
-            Collision::Left => Direction::Left,
-            Collision::Right => Direction::Right,
-            Collision::Under => Direction::Down,
-            Collision::None => Direction::None,
         }
     }
 }
@@ -647,86 +727,6 @@ impl EventHandler for Game {
         self.grid.move_if(keycode.into(), keycode.into());
         if let KeyCode::Q = keycode {
             self.grid.blocks.clear();
-        }
-    }
-}
-
-#[derive(Debug,Clone)]
-enum Direction {
-    Down,
-    Left, 
-    Right,
-    None
-}
-
-impl From<KeyCode> for Direction {
-    fn from(key: KeyCode) -> Self {
-        match key {
-            // move in a direction
-            KeyCode::Down => Direction::Down,
-            KeyCode::Left => Direction::Left,
-            KeyCode::Right => Direction::Right,
-            _ => Direction::None
-        }
-    }
-}
-
-impl Into<Coord> for Direction {
-    fn into(self) -> Coord {
-        match self {
-            Direction::Down => Coord{x:0, y:1} ,
-            Direction::Left => Coord{x: -1, y: 0},
-            Direction::Right => Coord{x: 1, y: 0},
-            Direction::None => Coord::default(),
-        }
-    }
-}
-
-impl Direction {
-    fn opposite(&self) -> Self {
-        match self {
-            Direction::Left => Direction::Right,
-            Direction::Right => Direction::Left,
-            _ => Direction::None,
-        }
-    }
-}
-
-enum Rotation {
-    CW,
-    CCW,
-    None,
-}
-
-// returns a random rotation to init a random Tetrinone
-impl Distribution<Rotation> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Rotation {
-        let i: i16 = rng.gen_range(0,3);
-        match i {
-            0 => Rotation::CW,
-            1 => Rotation::CCW,
-            _ => Rotation::None,
-        }
-    }
-}
-
-impl From<KeyCode> for Rotation {
-    fn from(key: KeyCode) -> Self {
-        match key {
-            // move in a direction
-            KeyCode::Z => Rotation::CCW,
-            KeyCode::X => Rotation::CW,
-            _ => Rotation::None
-        }
-    }
-}
-
-impl Rotation {
-    fn to_dir(&self) -> Direction {
-        match self {
-            Rotation::CW => Direction::Right,
-            Rotation::CCW => Direction::Left,
-            _ => Direction::None
         }
     }
 }
