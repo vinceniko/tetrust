@@ -1,3 +1,6 @@
+#![feature(checked_duration_since)] // non-panic'ing version for instant delay checking
+#![feature(duration_float)] // used to determine the number of frames given a frame time and total duration of an animation
+
 use ggez::{ conf, Context, ContextBuilder, GameResult };
 use ggez:: graphics;
 use ggez::event::{ self, EventHandler};
@@ -11,6 +14,9 @@ use rand::distributions::{Distribution, Standard};
 use std::time::{Duration, Instant};
 
 use nalgebra::{Vector2, Matrix2};
+
+mod animation;
+use animation::{FrameTimer, Animatable, FrameState};
 
 #[derive(Copy, Clone, Debug)]
 struct Coord {
@@ -107,7 +113,7 @@ impl From<KeyCode> for Direction {
 impl Into<Coord> for Direction {
     fn into(self) -> Coord {
         match self {
-            Direction::Down => Coord{x:0, y:1} ,
+            Direction::Down => Coord{x: 0, y: 1} ,
             Direction::Left => Coord{x: -1, y: 0},
             Direction::Right => Coord{x: 1, y: 0},
             Direction::None => Coord::default(),
@@ -232,72 +238,184 @@ impl Bone {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Block {
+    bone: Bone,
+    frame_timer: Option<FrameTimer>,
+}
+
+impl From<Bone> for Block {
+    fn from(some_bone: Bone) -> Self {
+        Self {
+            bone: some_bone,
+            frame_timer: None,
+        }
+    }
+}
+
+impl Animatable for Bone {
+    fn animate(&mut self, state: &FrameState) {
+        if let FrameState::Ready = state {
+            if let Color::White = self.color {
+                self.color = Color::Black;
+            } else {
+                self.color = Color::White;
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
-struct Blocks ([Option<Bone>; GRID_SIZE as usize]);
+struct Blocks {
+    data: Vec<Option<Block>>,
+    rows_full: Vec<i16>,
+}
 
 impl Blocks {
-    fn set_block(&mut self, new_pos: Pos, bone: Bone) {
-        if new_pos.0 >= 0 { // make sure its on the grid
-            let i: usize = new_pos.into(); // convert to index type
-            self.0[i] = Some(bone);
+    fn new(len: usize) -> Self {
+        Self {
+            data: vec![None; len],
+            rows_full: Vec::default(),
         }
     }
 
-    fn get_block(&self, pos: Pos) -> Option<Bone> {
+    fn set_block(&mut self, new_pos: Pos, bone: Bone) {
+        if new_pos.0 >= 0 { // make sure its on the grid
+            let i: usize = new_pos.into(); // convert to index type
+            self.data[i] = Some(bone.into());
+        }
+    }
+
+    fn get_block(&self, pos: Pos) -> Option<Block> {
         if pos.0 >= 0 { // make sure its on the grid
             let i: usize = pos.into(); // convert to index type
-            return self.0[i]
+            return self.data[i].clone()
         }
         None
     }
 
+    // clears the entire grid
     fn clear(&mut self) {
-        self.0 = [None; GRID_SIZE as usize];
+        self.data = vec![None.into(); GRID_SIZE as usize];
     }
 
+    // returns whether the row is full
     fn row_full(&self, row: &i16) -> bool {
         let start = (row * GRID_WIDTH) as usize;
         let end = start + GRID_WIDTH as usize; 
-        for block in self.0[start..end].iter() {
-            if let None = block {
+        for some_block in self.data[start..end].iter() {
+            if let None = some_block {
                 println!("not clear {}", row);
                 return false
             }
         }
-        println!("clear {}", row);
         true
     }
 
-    fn clear_row(&mut self, row: i16) {
+    // replaces each block in the row with None
+    fn clear_row(&mut self, row: &i16) {
         let start = (row * GRID_WIDTH) as usize;
         let end = start + GRID_WIDTH as usize; 
-        for block in self.0[start..end].iter_mut() {
-            *block = None;
+        for some_block in self.data[start..end].iter_mut() {
+            if let None = some_block {
+            } else {
+                *some_block = None;
+            }
         }
     }
 
+    fn add_row_to_clear(&mut self, row: &i16) {
+        self.rows_full.push(*row);
+    }
+
+    // returns whether the row is ready to be cleared if all the animations in the row are done
+    fn row_ready(&mut self, row: &i16) -> bool {
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize;
+        
+        self.data[start..end].iter_mut().filter_map(|some_block| {
+            if let Some(block) = some_block {
+                if let Some(frame_timer) = &mut block.frame_timer {
+                    let frame_state = frame_timer.get_state();
+                    return Some(frame_state)                    
+                }
+            }
+            return None
+        })
+        .all(|frame_state| { if let FrameState::Done = frame_state { return true } return false })
+    }
+
+    // initializes the FrameTimer which begins the clearing countdown
+    fn start_clear(&mut self, row: &i16) {
+        let start = (row * GRID_WIDTH) as usize;
+        let end = start + GRID_WIDTH as usize;
+        
+        let mut i = 0;
+        for some_block in self.data[start..end].iter_mut() {
+            if let Some(block) = some_block {
+                if let None = &mut block.frame_timer {
+                    let frame_duration = Duration::from_millis(50);
+                    let total_anim_time = Duration::from_secs(2); 
+                    let n_frames = total_anim_time.as_secs_f64() / frame_duration.as_secs_f64();
+                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, i * frame_duration)); // wave effect
+                    i += 1;
+                }
+            }
+        }
+
+        self.add_row_to_clear(row);
+    }
+    
+    fn finish_clear(&mut self) {
+        let ready_rows: Vec<i16> = self.rows_full.clone().into_iter().filter(|row| self.row_ready(row) ).collect();
+        println!("Full Rows: {:?}", self.rows_full);
+        println!("Ready Rows: {:?}", ready_rows);
+
+        // clear the ready rows
+        for ready_row in ready_rows.iter() {
+            self.clear_row(ready_row);
+        }
+        for ready_row in ready_rows.iter() {
+            for upper_row in (0..*ready_row).rev() {
+                println!("tried {}", upper_row);
+                if self.drop_row_down(&upper_row) == 0 {
+                    println!("{}", "returned");
+                    break; // preliminary break if empty row found
+                }
+            }
+            self.rows_full.remove(0); // dequeu from front
+        }
+    }
+
+    // returns the rows the piece inhabits
     fn get_piece_rows(&self, piece: &Tetrinome) -> Vec<i16> {
         let mut ys: Vec<i16> = piece.bones.iter().map(|bone| bone.coord.y).collect();
         ys.sort();
         ys.dedup();
-        println!("{:?}", ys);
+        println!("Piece Rows: {:?}", ys);
         ys.into_iter().collect()
     }
 
-    fn drop_row_down(&mut self, row: i16) -> u16 {
+    // drops the given row down
+    fn drop_row_down(&mut self, row: &i16) -> i16 {
         let mut start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
-        let mut count: u16 = 0;
-        for block in self.0.clone()[start..end].iter_mut() {
-            if let Some(bone) = block {
-                bone.coord.y += 1;
-                println!("{:?}", bone);
-                self.0[start] = None;
-                self.0[start + GRID_WIDTH as usize] = *block;
-
-                count +=1;
+        let end = start + GRID_WIDTH as usize;
+        let mut count = 0;
+        for block in self.data.clone()[start..end].iter_mut() {
+            if let Some(block) = block {
+                block.bone.coord.y += 1; // coord for drawing
+                println!("Dropped: {:?}", block);
+                self.data[start] = None.into(); // old spot
+                self.data[start + GRID_WIDTH as usize] = Some(block.clone()); // new spot has clone
+                count+=1;
             }
             start+=1;
+        }
+        // dropping down the rows affects the rows about to be cleared as well so add to each full row above the cleared row
+        for full_row in self.rows_full.iter_mut() {
+            if row >= full_row {
+                *full_row+=1;
+            }
         }
         count
     }
@@ -332,14 +450,6 @@ impl Blocks {
     }
 }
 
-impl From<[Option<Bone>; GRID_SIZE as usize]> for Blocks {
-    fn from(blocks: [Option<Bone>; GRID_SIZE as usize]) -> Self {
-        Self (
-            blocks
-        )
-    }
-}
-
 #[derive(Clone)]
 struct Grid {
     blocks: Blocks,
@@ -349,7 +459,7 @@ struct Grid {
 impl Grid {
     fn new() -> Self {
         Self {
-            blocks: [None; GRID_SIZE as usize].into(), // init to None (like null ptr)
+            blocks: Blocks::new(GRID_WIDTH as usize * GRID_HEIGHT as usize), // init to None (like null ptr)
             curr_piece: Tetrinome::new(&GRID_WIDTH),
         }
     }
@@ -369,14 +479,7 @@ impl Grid {
         // iterate from top to bottom checking for full rows, once found clear it, and iterate from bottom up to drop blocks down
         for row in 0..=rows[rows.len()-1] {
             if self.blocks.row_full(&row) {
-                self.blocks.clear_row(row);
-                for upper_row in (0..row).rev() {
-                    println!("tried {}", upper_row);
-                    if self.blocks.drop_row_down(upper_row) == 0 {
-                        println!("{}", "returned");
-                        break;
-                    }
-                }
+                self.blocks.start_clear(&row);
             }
         }
     }
@@ -434,16 +537,18 @@ impl Grid {
     }
 
     fn draw_grid(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let blocks = &self.blocks.0; 
-        let bones: Vec<Bone> = blocks.iter().map(|block| { // pull out all bones from Option<Bone>
-                if let Some(bone) = block {
-                    Ok(*bone)
+        let blocks = &mut self.blocks.data; 
+        let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
+                if let Some(block) = block {
+                    if let Some(frame_timer) = &mut block.frame_timer {  // if animatable
+                        block.bone.animate(&frame_timer.state());
+                    }
+                    Some(block.bone)
                 } else {
-                    Err(())
+                    None
                 }
             }
         )
-        .filter_map(Result::ok)
         .collect();
         self.draw_bones(ctx, &bones)?;
 
@@ -690,6 +795,8 @@ impl Game {
 impl EventHandler for Game {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         if Instant::now() - self.timing.last_update >= Duration::from_millis(MILLIS_PER_UPDATE.into()) {
+            self.grid.blocks.finish_clear(); // checks whether there are lines to clear
+
             if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) { // gravity
                 self.grid.move_if(Direction::Down, Rotation::None);
 
