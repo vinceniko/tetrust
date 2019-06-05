@@ -628,7 +628,6 @@ impl Tetrinome {
                     }
 
                     let coord_vec = Vector2::new(bone.coord.x, bone.coord.y);
-                    let pivot_vec = Vector2::new(pivot.coord.x, pivot.coord.y);
 
                     let pivot_offset = coord_vec - pivot_vec;
                     
