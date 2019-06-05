@@ -614,6 +614,7 @@ impl Tetrinome {
     fn rotate(&mut self, rot: &Rotation) {
         if let Some(pivot_i) = self.pivot { // if the tetrinome has a pivot
             let pivot = self.bones[pivot_i];
+            let pivot_vec = Vector2::new(pivot.coord.x, pivot.coord.y);
             for bone in self.bones.iter_mut() {
                 if let Rotation::None = rot { 
                 } else { // rotation not nothing
