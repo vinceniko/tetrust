@@ -800,9 +800,7 @@ impl EventHandler for Game {
             if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) { // gravity
                 self.grid.move_if(Direction::Down, Rotation::None);
 
-                let now = Instant::now();
-                self.timing.fall_update = now;
-                self.timing.last_update = now;
+                self.timing.fall_update = Instant::now();
             }
 
             self.timing.last_update = Instant::now();
