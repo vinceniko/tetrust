@@ -2,9 +2,8 @@
 #![feature(duration_float)] // used to determine the number of frames given a frame time and total duration of an animation
 
 use ggez::{ conf, Context, ContextBuilder, GameResult };
-use ggez:: graphics;
-use ggez::event::{ self, EventHandler};
-use ggez::event::{KeyCode, KeyMods};
+use ggez::graphics;
+use ggez::event::{ self, EventHandler, KeyCode, KeyMods};
 
 use std::ops::{ Add, AddAssign };
 
