@@ -274,6 +274,209 @@ impl Bone {
     }
 }
 
+// number of tetries piece kinds
+const NUM_PIECES: usize = 7;
+
+const TETRINOME_SIZE: usize = 4;
+
+static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
+
+#[derive(Debug, Clone)]
+struct Tetrinome {
+    kind: PieceKind,
+    bones: [Bone; TETRINOME_SIZE],
+    pivot: Option<usize>,
+}
+
+impl Tetrinome {
+    fn new(width: &i16) -> Self {
+        let mut new_piece = rand::random::<Self>();
+        new_piece.trans_change(&Coord::rand_x_offset((TETRINOME_SIZE as i16, width-TETRINOME_SIZE as i16), -1)); // translate to random x in the middle of the grid
+        new_piece
+    }
+
+    // add offset
+    fn shift(&self, offset: Coord) -> Vec<Coord> {
+        self.bones.iter().map(|bone| bone.coord + offset ).collect()
+    }
+
+    // replace offset
+    fn trans_to(&mut self, new_coords: Vec<Coord>) {
+        self.bones.iter_mut().zip(new_coords).map(|(bone, new_coord)| bone.coord = new_coord ).collect()
+    }
+
+    // set new offset based on adding offset
+    fn trans_change(&mut self, offset: &Coord) {
+        self.trans_to(self.shift(*offset));
+    }
+
+    fn get_coords(&self) -> Vec<Coord> {
+        self.bones.iter().map(|bone| bone.coord ).collect()
+    }
+
+    // from_layout instantiates a new tetrinome using the provided layout
+    fn from_layout(layout: String, color: Color, kind: PieceKind) -> Self {
+        let width = layout.find('\n').unwrap() as i16 + 1; // width in units not indices
+    
+        let mut pivot = None;
+        
+        let mut bones: [Bone; TETRINOME_SIZE] = [Bone::default(); TETRINOME_SIZE];
+        let mut bone_i: usize = 0;
+        for (i, c) in layout.chars().enumerate() {
+            if c == 'x' || c == 'o' {
+                let bone = Bone::new(color, Pos::from(i).pos_to_coord(width)); 
+                bones[bone_i] = bone;
+                
+                if c == 'o' {
+                    pivot = Some(bone_i);
+                }
+                bone_i+=1;
+            }
+        }
+        
+        Tetrinome {
+            bones,
+            pivot,
+            kind
+        }
+    }
+
+    fn get_width(&self) -> i16 {
+        let xs = self.bones.iter().map(|bone| bone.coord.x );
+        xs.clone().max().unwrap() - xs.min().unwrap() + 1 // TODO: is the clone necessary? moved value xs where first clone
+    }
+
+    fn from_piece(kind: PieceKind) -> Self {
+        match kind {
+            PieceKind::I => Tetrinome::from_layout(
+                [
+                    "----",
+                    "xoxx",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::Green,
+                kind,
+            ),
+            PieceKind::L => Tetrinome::from_layout(
+                [
+                    "--x-",
+                    "xox-",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::Yellow,
+                kind,
+            ),
+            PieceKind::J => Tetrinome::from_layout(
+                [
+                    "x---",
+                    "xox-",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::Red,
+                kind,
+            ),
+            PieceKind::T => Tetrinome::from_layout(
+                [
+                    "--x-",
+                    "-xox",
+                    "----",
+                    "----"
+                ].join("\n"),
+                Color::Blue,
+                kind,
+            ),
+            PieceKind::Z => Tetrinome::from_layout(
+                [
+                    "xx--",
+                    "-ox-",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::Pink,
+                kind,
+            ),
+            PieceKind::S => Tetrinome::from_layout(
+                [
+                    "--xx",
+                    "-xo-",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::White,
+                kind,
+            ),
+            PieceKind::O => Tetrinome::from_layout(
+                [
+                    "-xx-",
+                    "-xx-",
+                    "----",
+                    "----",
+                ].join("\n"),
+                Color::Aqua,
+                kind,
+            ),
+        }
+    }
+
+    fn rotate(&mut self, rot: &Rotation) {
+        if let Some(pivot_i) = self.pivot { // if the tetrinome has a pivot
+            let pivot = self.bones[pivot_i];
+            let pivot_vec = Vector2::new(pivot.coord.x, pivot.coord.y);
+            for bone in self.bones.iter_mut() {
+                if let Rotation::None = rot { 
+                } else { // rotation not nothing
+                    let rot_cw_matrix: Matrix2<i16>;
+                    if let Rotation::CW = rot {
+                        rot_cw_matrix = Matrix2::new(0, -1, 
+                                                    1, 0);
+                    } else {
+                        rot_cw_matrix = Matrix2::new(0, 1, 
+                                                    -1, 0);
+                    }
+
+                    let coord_vec = Vector2::new(bone.coord.x, bone.coord.y);
+                    let pivot_offset = coord_vec - pivot_vec; // relative position from pivot
+                    let new_pivot_offset = rot_cw_matrix * pivot_offset;
+                    let new_coord = pivot_vec + new_pivot_offset;
+
+                    bone.coord = Coord{x: new_coord[0], y: new_coord[1]};
+                }
+            }
+        }
+    }
+}
+
+// returns a random tetrinome with a random 1 step rotation in either direction but not translated
+impl Distribution<Tetrinome> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetrinome {
+        let i = rng.gen_range(0, NUM_PIECES) as usize;
+        
+        unsafe {
+            if let Some(pieces) = &PIECES {
+                let mut new_piece = pieces[i].clone();
+                new_piece.rotate(&rand::random::<Rotation>());
+                new_piece
+            } else {
+                panic!("piece array not initialized!")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PieceKind {
+    L,
+    J,
+    I,
+    T,
+    Z,
+    S,
+    O,
+}
+
 #[derive(Debug, Clone)]
 struct Block {
     bone: Bone,
@@ -691,212 +894,6 @@ impl Timing {
     }
 }
 
-// number of tetries piece kinds
-const NUM_PIECES: usize = 7;
-
-const TETRINOME_SIZE: usize = 4;
-
-static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
-
-#[derive(Debug, Clone)]
-struct Tetrinome {
-    kind: PieceKind,
-    bones: [Bone; TETRINOME_SIZE],
-    pivot: Option<usize>,
-}
-
-impl Tetrinome {
-    fn new(width: &i16) -> Self {
-        let mut new_piece = rand::random::<Self>();
-        new_piece.trans_change(&Coord::rand_x_offset((TETRINOME_SIZE as i16, width-TETRINOME_SIZE as i16), -1)); // translate to random x in the middle of the grid
-        new_piece
-    }
-
-    // add offset
-    fn shift(&self, offset: Coord) -> Vec<Coord> {
-        self.bones.iter().map(|bone| bone.coord + offset ).collect()
-    }
-
-    // replace offset
-    fn trans_to(&mut self, new_coords: Vec<Coord>) {
-        self.bones.iter_mut().zip(new_coords).map(|(bone, new_coord)| bone.coord = new_coord ).collect()
-    }
-
-    // set new offset based on adding offset
-    fn trans_change(&mut self, offset: &Coord) {
-        self.trans_to(self.shift(*offset));
-    }
-
-    fn get_coords(&self) -> Vec<Coord> {
-        self.bones.iter().map(|bone| bone.coord ).collect()
-    }
-
-    // from_layout instantiates a new tetrinome using the provided layout
-    fn from_layout(layout: String, color: Color, kind: PieceKind) -> Self {
-        let width = layout.find('\n').unwrap() as i16 + 1; // width in units not indices
-    
-        let mut pivot = None;
-        
-        let mut bones: [Bone; TETRINOME_SIZE] = [Bone::default(); TETRINOME_SIZE];
-        let mut bone_i: usize = 0;
-        for (i, c) in layout.chars().enumerate() {
-            if c == 'x' || c == 'o' {
-                let bone = Bone::new(color, Pos::from(i).pos_to_coord(width)); 
-                bones[bone_i] = bone;
-                
-                if c == 'o' {
-                    pivot = Some(bone_i);
-                }
-                bone_i+=1;
-            }
-        }
-        
-        Tetrinome {
-            bones,
-            pivot,
-            kind
-        }
-    }
-
-    fn get_width(&self) -> i16 {
-        let xs = self.bones.iter().map(|bone| bone.coord.x );
-        xs.clone().max().unwrap() - xs.min().unwrap() + 1 // TODO: is the clone necessary? moved value xs where first clone
-    }
-
-    fn from_piece(kind: PieceKind) -> Self {
-        match kind {
-            PieceKind::I => Tetrinome::from_layout(
-                [
-                    "----",
-                    "xoxx",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::Green,
-                kind,
-            ),
-            PieceKind::L => Tetrinome::from_layout(
-                [
-                    "--x-",
-                    "xox-",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::Yellow,
-                kind,
-            ),
-            PieceKind::J => Tetrinome::from_layout(
-                [
-                    "x---",
-                    "xox-",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::Red,
-                kind,
-            ),
-            PieceKind::T => Tetrinome::from_layout(
-                [
-                    "--x-",
-                    "-xox",
-                    "----",
-                    "----"
-                ].join("\n"),
-                Color::Blue,
-                kind,
-            ),
-            PieceKind::Z => Tetrinome::from_layout(
-                [
-                    "xx--",
-                    "-ox-",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::Pink,
-                kind,
-            ),
-            PieceKind::S => Tetrinome::from_layout(
-                [
-                    "--xx",
-                    "-xo-",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::White,
-                kind,
-            ),
-            PieceKind::O => Tetrinome::from_layout(
-                [
-                    "-xx-",
-                    "-xx-",
-                    "----",
-                    "----",
-                ].join("\n"),
-                Color::Aqua,
-                kind,
-            ),
-        }
-    }
-
-    fn rotate(&mut self, rot: &Rotation) {
-        if let Some(pivot_i) = self.pivot { // if the tetrinome has a pivot
-            let pivot = self.bones[pivot_i];
-            let pivot_vec = Vector2::new(pivot.coord.x, pivot.coord.y);
-            for bone in self.bones.iter_mut() {
-                if let Rotation::None = rot { 
-                } else { // rotation not nothing
-                    let rot_cw_matrix: Matrix2<i16>;
-                    if let Rotation::CW = rot {
-                        rot_cw_matrix = Matrix2::new(0, -1, 
-                                                    1, 0);
-                    } else {
-                        rot_cw_matrix = Matrix2::new(0, 1, 
-                                                    -1, 0);
-                    }
-
-                    let coord_vec = Vector2::new(bone.coord.x, bone.coord.y);
-
-                    let pivot_offset = coord_vec - pivot_vec;
-                    
-                    let new_pivot_offset = rot_cw_matrix * pivot_offset;
-
-                    let new_coord = pivot_vec + new_pivot_offset;
-
-                    bone.coord = Coord{x: new_coord[0], y: new_coord[1]};
-                }
-            }
-        }
-    }
-}
-
-// returns a random tetrinome with a random 1 step rotation in either direction but not translated
-impl Distribution<Tetrinome> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetrinome {
-        let i = rng.gen_range(0, NUM_PIECES) as usize;
-        
-        unsafe {
-            if let Some(pieces) = &PIECES {
-                let mut new_piece = pieces[i].clone();
-                new_piece.rotate(&rand::random::<Rotation>());
-                new_piece
-            } else {
-                panic!("piece array not initialized!")
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum PieceKind {
-    L,
-    J,
-    I,
-    T,
-    Z,
-    S,
-    O,
-}
-
 struct Game {
     grid: Grid,
     timing: Timing,
@@ -916,7 +913,8 @@ impl EventHandler for Game {
         if Instant::now() - self.timing.last_update >= Duration::from_millis(MILLIS_PER_UPDATE.into()) {
             self.grid.blocks.finish_clear(); // checks whether there are lines to clear
 
-            if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) { // gravity
+            // gravity
+            if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) {
                 self.grid.move_if(Direction::Down, Rotation::None);
 
                 self.timing.fall_update = Instant::now();
@@ -947,13 +945,10 @@ impl EventHandler for Game {
         _keymod: KeyMods,
         _repeat: bool,
     ) {
-        if let KeyCode::Space = keycode {
-            // self.grid.start_shadow();
-            self.grid.finish_drop();
-        }
-        self.grid.move_if(keycode.into(), keycode.into());
-        if let KeyCode::Q = keycode {
-            self.grid.blocks.clear();
+        match keycode {
+           KeyCode::Space => self.grid.finish_drop(),
+           KeyCode::Q => self.grid.blocks.clear(),
+           _ => {self.grid.move_if(keycode.into(), keycode.into());},
         }
     }
 }
@@ -961,19 +956,24 @@ impl EventHandler for Game {
 const GRID_WIDTH: i16 = 10;
 const GRID_HEIGHT: i16 = 20;
 const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
-static mut PIXEL_SIZE: i16 = 0;
+static mut PIXEL_SIZE: Option<i16> = None;
+// prevents having to put "unsafe" anywhere where PIXEL_SIZE is needed
+fn get_pixel_size() -> i16 {
+    unsafe {
+        if let Some(pixel_size) = PIXEL_SIZE {
+            pixel_size
+        } else {
+            panic!("pixel size not initialized!");
+        }
+    }
+}
 
 // Here we're defining how many quickly we want our game to update.
 const UPDATES_PER_SEC: u32 = 16;
 // And we get the milliseconds of delay that this update rate corresponds to.
 const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
-const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 
-fn get_pixel_size() -> i16 {
-    unsafe {
-        PIXEL_SIZE
-    }
-}
+const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 
 fn main() ->GameResult<()> {
     let pieces: [Tetrinome; NUM_PIECES] = [
@@ -995,7 +995,7 @@ fn main() ->GameResult<()> {
     // determine pixel size based on display height
     unsafe {
         let display_height = event::EventsLoop::new().get_primary_monitor().get_dimensions().height;
-        PIXEL_SIZE = (display_height * 0.9) as i16 / GRID_HEIGHT;
+        PIXEL_SIZE = Some((display_height * 0.9) as i16 / GRID_HEIGHT);
     }
 
     // Make a Context. vsync enabled by default
@@ -1004,9 +1004,7 @@ fn main() ->GameResult<()> {
         .window_mode(conf::WindowMode::default().dimensions((GRID_WIDTH * get_pixel_size()).into(), (GRID_HEIGHT * get_pixel_size()).into()))
         .build()?;
 
-    // Create an instance of your event handler.
-    // Usually, you should provide it with the Context object to
-    // use when setting your game up.
+    // create event handler instance
     let game = &mut Game::new(ctx, grid, timing);
 
     event::run(ctx, events_loop, game)
