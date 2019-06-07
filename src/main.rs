@@ -154,6 +154,7 @@ impl From<KeyCode> for Rotation {
             // move in a direction
             KeyCode::Z => Rotation::CCW,
             KeyCode::X => Rotation::CW,
+            KeyCode::Up => Rotation::CW,
             _ => Rotation::None
         }
     }
@@ -234,7 +235,7 @@ impl Color {
 impl Into<graphics::Color> for Color {
     fn into(self) -> graphics::Color {
         match self {
-            Color::Black => graphics::Color::from_rgba_u32(0x000000),
+            Color::Black => graphics::Color::from_rgb(0, 0, 0),
             Color::Green => graphics::Color::from_rgb(0, 255, 34),
             Color::Yellow => graphics::Color::from_rgb(255, 255, 0),
             Color::Red => graphics::Color::from_rgb(255, 0, 0),
@@ -265,6 +266,12 @@ impl Bone {
             coord
         }
     }
+
+    fn clear_animate(&mut self, state: &FrameState) {
+        if let FrameState::Ready = state { 
+            self.color = self.color.next_color()
+}
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -278,14 +285,6 @@ impl From<Bone> for Block {
         Self {
             bone: some_bone,
             frame_timer: None,
-        }
-    }
-}
-
-impl Animatable for Bone {
-    fn animate(&mut self, state: &FrameState) {
-        if let FrameState::Ready = state { 
-            self.color = self.color.next_color()
         }
     }
 }
@@ -380,7 +379,7 @@ impl Blocks {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
                     let frame_duration = Duration::from_millis(50);
-                    let total_anim_time = Duration::from_millis(1000); // to give the perception that the animation doesn't stop before clearing, the blocks on the left have a longer total duration and finish when the blocks on the right finish
+                    let total_anim_time = Duration::from_millis(1000);
                     let n_frames = total_anim_time.as_secs_f64() / frame_duration.as_secs_f64();
                     block.bone.color = Color::get_color(i as usize);
                     block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, Duration::default())); // wave effect
@@ -480,6 +479,7 @@ impl Blocks {
 struct Grid {
     blocks: Blocks,
     curr_piece: Tetrinome,
+    shadow_timer: Option<FrameTimer>,
 }
 
 impl Grid {
@@ -487,6 +487,7 @@ impl Grid {
         Self {
             blocks: Blocks::new(GRID_WIDTH as usize * GRID_HEIGHT as usize), // init to None (like null ptr)
             curr_piece: Tetrinome::new(&GRID_WIDTH),
+            shadow_timer: None,
         }
     }
 
@@ -511,7 +512,7 @@ impl Grid {
     }
 
     // move_if is the actually called helper, taking a direction and determining whether or not to move
-    fn move_if(&mut self, dir: Direction, rot: Rotation) {
+    fn move_if(&mut self, dir: Direction, rot: Rotation) -> bool {
         let mut new_piece = self.curr_piece.clone();
         new_piece.trans_change(&dir.clone().into()); // translate new piece based on direction
         new_piece.rotate(&rot); // do rotation
@@ -522,6 +523,7 @@ impl Grid {
                 self.commit_piece(); 
                 self.clear_row_if(); 
                 self.curr_piece = Tetrinome::new(&GRID_WIDTH); 
+                return true;
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
@@ -541,14 +543,15 @@ impl Grid {
             }, // collided on the side, nothing happens
             Collision::None => self.curr_piece = new_piece, // no collision, then move
         }
+        false
     }
 
-    fn draw_bones(&self, ctx: &mut Context, bones: &[Bone]) -> GameResult<()> { // bones is a slice of either a vec or an array
+    fn draw_bones(&self, ctx: &mut Context, bones: &[Bone], draw_mode: graphics::DrawMode) -> GameResult<()> { // bones is a slice of either a vec or an array
         let mesh = &mut graphics::MeshBuilder::new(); // apply new rect meshes to this mesh, faster than drawing each individual rectangle
 
         for bone in bones.iter() {
             let rect = mesh.rectangle(
-                    graphics::DrawMode::fill(), 
+                    draw_mode, 
                     graphics::Rect::new(
                         ((bone.coord.x) * get_pixel_size()).into(),
                         ((bone.coord.y) * get_pixel_size()).into(),
@@ -559,6 +562,22 @@ impl Grid {
                 ).build(ctx)?;
             graphics::draw(ctx, &rect, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
         }
+        if let graphics::DrawMode::Fill(_) = draw_mode {
+            let mesh = &mut graphics::MeshBuilder::new();
+            for bone in bones.iter() {
+                let rect = mesh.rectangle(
+                        graphics::DrawMode::stroke(2.0), 
+                        graphics::Rect::new(
+                            ((bone.coord.x) * get_pixel_size()).into(),
+                            ((bone.coord.y) * get_pixel_size()).into(),
+                            get_pixel_size().into(),
+                            get_pixel_size().into(),
+                        ), 
+                        Color::Black.into(),
+                    ).build(ctx)?;
+                graphics::draw(ctx, &rect, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+            }
+        }
         Ok(())
     }
 
@@ -567,7 +586,7 @@ impl Grid {
         let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
                 if let Some(block) = block {
                     if let Some(frame_timer) = &mut block.frame_timer {  // if animatable
-                        block.bone.animate(&frame_timer.state());
+                        block.bone.clear_animate(&frame_timer.state());
                     }
                     Some(block.bone)
                 } else {
@@ -577,14 +596,54 @@ impl Grid {
         )
         .collect();
 
-        self.draw_bones(ctx, &bones)?;
+        self.draw_bones(ctx, &bones, graphics::DrawMode::fill())?;
 
         Ok(())
     }
 
-    fn draw_curr_piece(&self, ctx: &mut Context) -> GameResult<()> {
-        self.draw_bones(ctx, &self.curr_piece.bones)?;
+    fn draw_curr_piece(&mut self, ctx: &mut Context) -> GameResult<()> {
+        if let None = self.shadow_timer {
+            self.draw_bones(ctx, &self.curr_piece.bones, graphics::DrawMode::fill())?;
+        } else if let Some(frame_timer) = &mut self.shadow_timer {
+            // let frame_state = frame_timer.state();
+            // self.animate_shadow(&frame_state);
+        }
         Ok(())
+    }
+
+    fn shadow_distance(&self) -> usize {
+        let mut shadow_piece = self.curr_piece.clone();
+        let mut i = 0;
+        loop {
+            let col_dir = self.blocks.check_collision(&shadow_piece, &Direction::Down, &Rotation::None);
+            match col_dir { // check collision for new piece
+                Collision::Under => {
+                    if i != 0 { // panic subtract overflow
+                        break i - 1;
+                    } else {
+                        break 0;
+                    }
+                }
+                _ => ()
+            }
+            i += 1;
+            shadow_piece.trans_change(&Direction::Down.into()); // translate new piece based on direction
+        }
+    }
+
+    fn draw_shadow(&mut self, ctx: &mut Context) -> GameResult<()> {
+        let mut shadow_piece = self.curr_piece.clone();
+        for _ in 0..self.shadow_distance() {
+            shadow_piece.trans_change(&Direction::Down.into());
+        }
+        self.draw_bones(ctx, &shadow_piece.bones, graphics::DrawMode::stroke(1.0))?;
+        Ok(())
+    }
+
+    fn finish_shadow(&mut self) {
+        loop {
+            if self.move_if(Direction::Down, Rotation::None) { break; }
+        }
     }
 }
 
@@ -860,6 +919,10 @@ impl EventHandler for Game {
         _keymod: KeyMods,
         _repeat: bool,
     ) {
+        if let KeyCode::Space = keycode {
+            // self.grid.start_shadow();
+            self.grid.finish_shadow();
+        }
         self.grid.move_if(keycode.into(), keycode.into());
         if let KeyCode::Q = keycode {
             self.grid.blocks.clear();
