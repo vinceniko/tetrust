@@ -2,7 +2,7 @@
 
 A clone of a famous block breaking game.
 
-![preview](assets/preview.gif)
+<img src="assets/preview.gif" alt="preview" width="175"/>
 
 ## Current Features
 
