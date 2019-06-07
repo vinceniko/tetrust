@@ -64,7 +64,7 @@ impl FrameTimer {
     }
 
     // gets the state but does not advance to the next frame
-    pub fn get_state(&mut self) -> FrameState {
+    pub fn get_state(&self) -> FrameState {
         if self.is_done() {
             return FrameState::Done
         }
