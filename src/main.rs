@@ -188,6 +188,8 @@ impl Collision {
         }
     }
 }
+    
+const NUM_COLORS: usize = 8;
 
 #[derive(Copy, Clone, Debug)]
 enum Color {
@@ -201,6 +203,31 @@ enum Color {
     Aqua,
 }
 
+const COLOR: [Color; NUM_COLORS] = [Color::Black, Color::Green, Color::Yellow, Color::Red, Color::Blue, Color::Pink, Color::White, Color::Aqua];
+
+impl Color {
+    fn to_i(&self) -> usize {
+        match self {
+            Color::Black => 0,
+            Color::Green => 1,
+            Color::Yellow => 2,
+            Color::Red => 3,
+            Color::Blue => 4,
+            Color::Pink => 5,
+            Color::White => 6,
+            Color::Aqua => 7,
+        }
+    }
+
+    fn _next_color(i: usize) -> Color {
+        COLOR[(i + 1) % NUM_COLORS]
+    }
+
+    fn next_color(&self) -> Color {
+        Color::_next_color(self.to_i())
+    }
+}
+
 impl Into<graphics::Color> for Color {
     fn into(self) -> graphics::Color {
         match self {
@@ -212,7 +239,6 @@ impl Into<graphics::Color> for Color {
             Color::Pink => graphics::Color::from_rgb(255, 0, 255),
             Color::White => graphics::Color::from_rgb(255, 255, 255),
             Color::Aqua => graphics::Color::from_rgb(0, 173, 254),
-
         }
     }
 }
@@ -255,12 +281,8 @@ impl From<Bone> for Block {
 
 impl Animatable for Bone {
     fn animate(&mut self, state: &FrameState) {
-        if let FrameState::Ready = state {
-            if let Color::White = self.color {
-                self.color = Color::Black;
-            } else {
-                self.color = Color::White;
-            }
+        if let FrameState::Ready = state { 
+            self.color = self.color.next_color()
         }
     }
 }
@@ -355,9 +377,10 @@ impl Blocks {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
                     let frame_duration = Duration::from_millis(50);
-                    let total_anim_time = Duration::from_secs(2); 
+                    let total_anim_time = Duration::from_millis(1000 + (GRID_WIDTH as u64 - i) * 50); // to give the perception that the animation doesn't stop before clearing, the blocks on the left have a longer total duration and finish when the blocks on the right finish
                     let n_frames = total_anim_time.as_secs_f64() / frame_duration.as_secs_f64();
-                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, i * frame_duration)); // wave effect
+                    block.bone.color = Color::White;
+                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, i as u32 * frame_duration)); // wave effect
                     i += 1;
                 }
             }
@@ -550,6 +573,7 @@ impl Grid {
             }
         )
         .collect();
+
         self.draw_bones(ctx, &bones)?;
 
         Ok(())
@@ -575,6 +599,13 @@ impl Timing {
         }
     }
 }
+
+// number of tetries piece kinds
+const NUM_PIECES: usize = 7;
+
+const TETRINOME_SIZE: usize = 4;
+
+static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
 
 #[derive(Debug, Clone)]
 struct Tetrinome {
@@ -750,7 +781,7 @@ impl Tetrinome {
 // returns a random tetrinome with a random 1 step rotation in either direction but not translated
 impl Distribution<Tetrinome> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetrinome {
-        let i = rng.gen_range(0, 7) as usize;
+        let i = rng.gen_range(0, NUM_PIECES) as usize;
         
         unsafe {
             if let Some(pieces) = &PIECES {
@@ -763,9 +794,6 @@ impl Distribution<Tetrinome> for Standard {
         }
     }
 }
-
-// number of tetries piece kinds
-const NUM_PIECES: usize = 7;
 
 #[derive(Debug, Clone)]
 enum PieceKind {
@@ -849,10 +877,6 @@ const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 
 const DISPLAY_WIDTH: i16 = GRID_WIDTH * PIXEL_SIZE;
 const DISPLAY_HEIGHT: i16 = GRID_HEIGHT * PIXEL_SIZE;
-
-const TETRINOME_SIZE: usize = 4;
-
-static mut PIECES: Option<[Tetrinome; NUM_PIECES]> = None;
 
 fn main() ->GameResult<()> {
     let pieces: [Tetrinome; NUM_PIECES] = [
