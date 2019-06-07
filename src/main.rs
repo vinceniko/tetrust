@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use nalgebra::{Vector2, Matrix2};
 
 mod animation;
-use animation::{FrameTimer, Animatable, FrameState};
+use animation::{FrameTimer, FrameState};
 
 #[derive(Copy, Clone, Debug)]
 struct Coord {
@@ -270,7 +270,7 @@ impl Bone {
     fn clear_animate(&mut self, state: &FrameState) {
         if let FrameState::Ready = state { 
             self.color = self.color.next_color()
-}
+        }
     }
 }
 
@@ -329,7 +329,6 @@ impl Blocks {
         let end = start + GRID_WIDTH as usize; 
         for some_block in self.data[start..end].iter() {
             if let None = some_block {
-                println!("not clear {}", row);
                 return false
             }
         }
@@ -393,18 +392,13 @@ impl Blocks {
     
     fn finish_clear(&mut self) {
         let ready_rows: Vec<i16> = self.rows_full.clone().into_iter().filter(|row| self.row_ready(row) ).collect();
-        println!("Full Rows: {:?}", self.rows_full);
-        println!("Ready Rows: {:?}", ready_rows);
-
         // clear the ready rows
         for ready_row in ready_rows.iter() {
             self.clear_row(ready_row);
         }
         for ready_row in ready_rows.iter() {
             for upper_row in (0..*ready_row).rev() {
-                println!("tried {}", upper_row);
                 if self.drop_row_down(&upper_row) == 0 {
-                    println!("{}", "returned");
                     break; // preliminary break if empty row found
                 }
             }
@@ -417,7 +411,6 @@ impl Blocks {
         let mut ys: Vec<i16> = piece.bones.iter().map(|bone| bone.coord.y).collect();
         ys.sort();
         ys.dedup();
-        println!("Piece Rows: {:?}", ys);
         ys.into_iter().collect()
     }
 
@@ -429,7 +422,6 @@ impl Blocks {
         for block in self.data.clone()[start..end].iter_mut() {
             if let Some(block) = block {
                 block.bone.coord.y += 1; // coord for drawing
-                println!("Dropped: {:?}", block);
                 self.data[start] = None.into(); // old spot
                 self.data[start + GRID_WIDTH as usize] = Some(block.clone()); // new spot has clone
                 count+=1;
@@ -476,10 +468,16 @@ impl Blocks {
 }
 
 #[derive(Clone)]
+struct InstantDrop {
+    piece: Tetrinome,
+    frame_timer: FrameTimer,
+}
+
+#[derive(Clone)]
 struct Grid {
     blocks: Blocks,
     curr_piece: Tetrinome,
-    shadow_timer: Option<FrameTimer>,
+    instant_drop: Option<InstantDrop>,
 }
 
 impl Grid {
@@ -487,7 +485,7 @@ impl Grid {
         Self {
             blocks: Blocks::new(GRID_WIDTH as usize * GRID_HEIGHT as usize), // init to None (like null ptr)
             curr_piece: Tetrinome::new(&GRID_WIDTH),
-            shadow_timer: None,
+            instant_drop: None,
         }
     }
 
@@ -528,16 +526,12 @@ impl Grid {
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
                     let new_dir = &col_dir.to_dir().opposite();
-                    println!("widths: {:?}, {:?}", new_piece.get_width(), new_piece.get_width() / 2);
                     for _ in 0..new_piece.get_width()/2 {
                         new_piece.trans_change(&new_dir.clone().into());
                     }
                     let new_col = self.blocks.check_collision(&new_piece, &new_dir, &Rotation::None);
                     if let Collision::None = new_col {
-                        println!("{}", true);
                         self.curr_piece = new_piece;
-                    } else {
-                        println!("{:?}, {:?}", new_dir, new_col);
                     }
                 }
             }, // collided on the side, nothing happens
@@ -602,17 +596,11 @@ impl Grid {
     }
 
     fn draw_curr_piece(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if let None = self.shadow_timer {
-            self.draw_bones(ctx, &self.curr_piece.bones, graphics::DrawMode::fill())?;
-        } else if let Some(frame_timer) = &mut self.shadow_timer {
-            // let frame_state = frame_timer.state();
-            // self.animate_shadow(&frame_state);
-        }
-        Ok(())
+        self.draw_bones(ctx, &self.curr_piece.bones, graphics::DrawMode::fill())
     }
 
-    fn shadow_distance(&self) -> usize {
-        let mut shadow_piece = self.curr_piece.clone();
+    fn shadow_distance(&self, piece: &Tetrinome) -> usize {
+        let mut shadow_piece = piece.clone();
         let mut i = 0;
         loop {
             let col_dir = self.blocks.check_collision(&shadow_piece, &Direction::Down, &Rotation::None);
@@ -633,17 +621,58 @@ impl Grid {
 
     fn draw_shadow(&mut self, ctx: &mut Context) -> GameResult<()> {
         let mut shadow_piece = self.curr_piece.clone();
-        for _ in 0..self.shadow_distance() {
+        for _ in 0..self.shadow_distance(&shadow_piece) {
             shadow_piece.trans_change(&Direction::Down.into());
         }
         self.draw_bones(ctx, &shadow_piece.bones, graphics::DrawMode::stroke(1.0))?;
         Ok(())
     }
 
-    fn finish_shadow(&mut self) {
+    fn start_drop(&mut self, piece: Tetrinome) {
+        let frame_duration = Duration::from_millis(5);
+        let n_frames = self.shadow_distance(&piece) + 1;
+        self.instant_drop = Some(InstantDrop {
+            piece: piece.clone(),
+            frame_timer: FrameTimer::equal_sized(n_frames as usize, frame_duration, Duration::default()),
+        });
+    }
+
+    fn finish_drop(&mut self) {
+        let curr_piece = self.curr_piece.clone();
         loop {
-            if self.move_if(Direction::Down, Rotation::None) { break; }
+            if self.move_if(Direction::Down, Rotation::None) { 
+                self.start_drop(curr_piece);
+                break; 
+            }
         }
+    }
+
+    fn animate_drop(&mut self) {
+        if let Some(instant_drop) = &mut self.instant_drop {
+            if let FrameState::Ready = &mut instant_drop.frame_timer.state() {
+                let piece = &mut instant_drop.piece;
+                // piece.bones.iter_mut().for_each(|bone| { if let Color::White = bone.color {bone.color = Color::White;} else { bone.color = Color::Black; } });
+                piece.trans_change(&Direction::Down.into());
+            } else if let FrameState::Done = instant_drop.frame_timer.state() {
+                self.instant_drop = None;
+            }
+        }
+    }
+    
+    fn draw_drop(&mut self, ctx: &mut Context) -> GameResult<()> {
+        if let Some(instant_drop) = &mut self.instant_drop {
+            let bones = instant_drop.piece.bones;
+            self.draw_bones(ctx, &bones, graphics::DrawMode::fill())?;
+        }
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        self.draw_grid(ctx)?;
+        self.draw_shadow(ctx)?;
+        self.animate_drop();
+        self.draw_drop(ctx)?;
+        self.draw_curr_piece(ctx)
     }
 }
 
@@ -679,7 +708,7 @@ struct Tetrinome {
 impl Tetrinome {
     fn new(width: &i16) -> Self {
         let mut new_piece = rand::random::<Self>();
-        new_piece.trans_change(&Coord::rand_x_offset((TETRINOME_SIZE as i16, width-TETRINOME_SIZE as i16), 0)); // translate to random x in the middle of the grid
+        new_piece.trans_change(&Coord::rand_x_offset((TETRINOME_SIZE as i16, width-TETRINOME_SIZE as i16), -1)); // translate to random x in the middle of the grid
         new_piece
     }
 
@@ -901,9 +930,8 @@ impl EventHandler for Game {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, Color::Black.into());
 
-        self.grid.draw_curr_piece(ctx)?;
-        self.grid.draw_grid(ctx)?;
-        
+        self.grid.draw(ctx)?;
+
         graphics::present(ctx)?;
 
         ggez::timer::yield_now();
@@ -921,7 +949,7 @@ impl EventHandler for Game {
     ) {
         if let KeyCode::Space = keycode {
             // self.grid.start_shadow();
-            self.grid.finish_shadow();
+            self.grid.finish_drop();
         }
         self.grid.move_if(keycode.into(), keycode.into());
         if let KeyCode::Q = keycode {
