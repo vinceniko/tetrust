@@ -551,10 +551,10 @@ impl Grid {
             let rect = mesh.rectangle(
                     graphics::DrawMode::fill(), 
                     graphics::Rect::new(
-                        ((bone.coord.x) * PIXEL_SIZE).into(),
-                        ((bone.coord.y) * PIXEL_SIZE).into(),
-                        PIXEL_SIZE.into(),
-                        PIXEL_SIZE.into(),
+                        ((bone.coord.x) * get_pixel_size()).into(),
+                        ((bone.coord.y) * get_pixel_size()).into(),
+                        get_pixel_size().into(),
+                        get_pixel_size().into(),
                     ), 
                     bone.color.into(),
                 ).build(ctx)?;
@@ -871,7 +871,7 @@ impl EventHandler for Game {
 const GRID_WIDTH: i16 = 10;
 const GRID_HEIGHT: i16 = 20;
 const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
-const PIXEL_SIZE: i16 = 64;
+static mut PIXEL_SIZE: i16 = 0;
 
 // Here we're defining how many quickly we want our game to update.
 const UPDATES_PER_SEC: u32 = 16;
@@ -879,8 +879,11 @@ const UPDATES_PER_SEC: u32 = 16;
 const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
 const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 
-const DISPLAY_WIDTH: i16 = GRID_WIDTH * PIXEL_SIZE;
-const DISPLAY_HEIGHT: i16 = GRID_HEIGHT * PIXEL_SIZE;
+fn get_pixel_size() -> i16 {
+    unsafe {
+        PIXEL_SIZE
+    }
+}
 
 fn main() ->GameResult<()> {
     let pieces: [Tetrinome; NUM_PIECES] = [
@@ -899,10 +902,16 @@ fn main() ->GameResult<()> {
     let grid = Grid::new();
     let timing = Timing::new(Instant::now(), Instant::now());
 
+    // determine pixel size based on display height
+    unsafe {
+        let display_height = event::EventsLoop::new().get_primary_monitor().get_dimensions().height;
+        PIXEL_SIZE = (display_height * 0.9) as i16 / GRID_HEIGHT;
+    }
+
     // Make a Context. vsync enabled by default
     let (ctx, events_loop) = &mut ContextBuilder::new("Tetrust", "vinceniko")
         .window_setup(conf::WindowSetup::default().title("Tetrust"))
-        .window_mode(conf::WindowMode::default().dimensions(DISPLAY_WIDTH.into(), DISPLAY_HEIGHT.into()))
+        .window_mode(conf::WindowMode::default().dimensions((GRID_WIDTH * get_pixel_size()).into(), (GRID_HEIGHT * get_pixel_size()).into()))
         .build()?;
 
     // Create an instance of your event handler.
@@ -910,5 +919,5 @@ fn main() ->GameResult<()> {
     // use when setting your game up.
     let game = &mut Game::new(ctx, grid, timing);
 
-   event::run(ctx, events_loop, game)
+    event::run(ctx, events_loop, game)
 }
