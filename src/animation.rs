@@ -25,6 +25,7 @@ impl FrameTimer {
         return self
     }
 
+    #[allow(dead_code)]
     pub fn from_vec(frames: Vec<Duration>, delay: Duration) -> Self {
         Self::init_frameless(delay).set_frames(frames)
     }
