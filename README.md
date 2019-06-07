@@ -10,6 +10,7 @@ A clone of a famous block breaking game in pure Rust and ggez
   * Tetrinome translations
   * Tetrinome rotations
   * Line clearings
+* Wall kicks
 * Fancy Animations
   * Line clearings
   * Instant drops
