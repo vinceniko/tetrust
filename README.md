@@ -1,6 +1,6 @@
 # Tetrust
 
-A clone of a famous block breaking game.
+A clone of a famous block breaking game in pure Rust and ggez
 
 <img src="assets/preview.gif" alt="preview" width="175"/>
 
@@ -15,11 +15,10 @@ A clone of a famous block breaking game.
   * Instant drops
 * Shadow piece
 * Instant drops
-* Implemented in pure Rust and ggez
 
 ## Potential Future Features
 
-For now I'm satisfied with what the I achieved considering it was a side project to try out game development and Rust, but here are future features I would add if I return to the project:
+For now I'm satisfied with what the I achieved considering it was a side project to try out game development and Rust, but here are features I would add if I return to the project:
 
 * State management system
   * Pause state
