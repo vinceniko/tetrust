@@ -203,7 +203,7 @@ enum Color {
     Aqua,
 }
 
-const COLOR: [Color; NUM_COLORS] = [Color::Black, Color::Green, Color::Yellow, Color::Red, Color::Blue, Color::Pink, Color::White, Color::Aqua];
+const COLORS: [Color; NUM_COLORS] = [Color::Black, Color::Green, Color::Yellow, Color::Red, Color::Blue, Color::Pink, Color::White, Color::Aqua];
 
 impl Color {
     fn to_i(&self) -> usize {
@@ -219,8 +219,12 @@ impl Color {
         }
     }
 
+    fn get_color(i: usize) -> Color {
+        COLORS[(i + 1) % NUM_COLORS]
+    }
+
     fn _next_color(i: usize) -> Color {
-        COLOR[(i + 1) % NUM_COLORS]
+        Self::get_color(i)
     }
 
     fn next_color(&self) -> Color {
@@ -377,10 +381,10 @@ impl Blocks {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
                     let frame_duration = Duration::from_millis(50);
-                    let total_anim_time = Duration::from_millis(1000 + (GRID_WIDTH as u64 - i) * 50); // to give the perception that the animation doesn't stop before clearing, the blocks on the left have a longer total duration and finish when the blocks on the right finish
+                    let total_anim_time = Duration::from_millis(1000); // to give the perception that the animation doesn't stop before clearing, the blocks on the left have a longer total duration and finish when the blocks on the right finish
                     let n_frames = total_anim_time.as_secs_f64() / frame_duration.as_secs_f64();
-                    block.bone.color = Color::White;
-                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, i as u32 * frame_duration)); // wave effect
+                    block.bone.color = Color::get_color(i as usize);
+                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, Duration::default())); // wave effect
                     i += 1;
                 }
             }
