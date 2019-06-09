@@ -4,6 +4,24 @@ A clone of a famous block breaking game in pure Rust and ggez
 
 <img src="assets/preview.gif" alt="preview" width="175"/>
 
+## Installation
+
+1. git clone the repo
+2. Install rust
+3. cargo run
+
+## Controls
+
+|KeyCode|Action|
+|-|-|
+|LeftArrow|Move Tetrinome Left|
+|RightArrow|Move Tetrinome Right|
+|UpArrow|Rotate Tetrinome Clockwise|
+|Space|Instant Drop|
+|Z|Rotate Tetrinome Counter Clockwise|
+|X|Rotate Tetrinome Clockwise|
+|Q|Clear Board|
+
 ## Current Features
 
 * Basic gameplay
