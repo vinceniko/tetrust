@@ -1,9 +1,13 @@
 #![feature(checked_duration_since)] // non-panic'ing version for instant delay checking
 #![feature(duration_float)] // used to determine the number of frames given a frame time and total duration of an animation
 
-use ggez::{ conf, Context, ContextBuilder, GameResult };
-use ggez::graphics;
-use ggez::event::{ self, EventHandler, KeyCode, KeyMods};
+use quicksilver::{
+    Result,
+    geom::{Rectangle, Vector}, // Now we need Transform
+    graphics,
+    input::{Key, ButtonState},
+    lifecycle::{State, Window, run, Event}
+};
 
 use std::ops::{ Add, AddAssign };
 
@@ -97,13 +101,13 @@ enum Direction {
     None
 }
 
-impl From<KeyCode> for Direction {
-    fn from(key: KeyCode) -> Self {
+impl From<Key> for Direction {
+    fn from(key: Key) -> Self {
         match key {
             // move in a direction
-            KeyCode::Down => Direction::Down,
-            KeyCode::Left => Direction::Left,
-            KeyCode::Right => Direction::Right,
+            Key::Down => Direction::Down,
+            Key::Left => Direction::Left,
+            Key::Right => Direction::Right,
             _ => Direction::None
         }
     }
@@ -148,13 +152,13 @@ impl Distribution<Rotation> for Standard {
     }
 }
 
-impl From<KeyCode> for Rotation {
-    fn from(key: KeyCode) -> Self {
+impl From<Key> for Rotation {
+    fn from(key: Key) -> Self {
         match key {
             // move in a direction
-            KeyCode::Z => Rotation::CCW,
-            KeyCode::X => Rotation::CW,
-            KeyCode::Up => Rotation::CW,
+            Key::Z => Rotation::CCW,
+            Key::X => Rotation::CW,
+            Key::Up => Rotation::CW,
             _ => Rotation::None
         }
     }
@@ -235,14 +239,14 @@ impl Color {
 impl Into<graphics::Color> for Color {
     fn into(self) -> graphics::Color {
         match self {
-            Color::Black => graphics::Color::from_rgb(0, 0, 0),
-            Color::Green => graphics::Color::from_rgb(0, 255, 34),
-            Color::Yellow => graphics::Color::from_rgb(255, 255, 0),
-            Color::Red => graphics::Color::from_rgb(255, 0, 0),
-            Color::Blue => graphics::Color::from_rgb(0, 0, 255),
-            Color::Pink => graphics::Color::from_rgb(255, 0, 255),
-            Color::White => graphics::Color::from_rgb(255, 255, 255),
-            Color::Aqua => graphics::Color::from_rgb(0, 173, 254),
+            Color::Black => graphics::Color::from_rgba(0, 0, 0, 1.0),
+            Color::Green => graphics::Color::from_rgba(0, 255, 34, 1.0),
+            Color::Yellow => graphics::Color::from_rgba(255, 255, 0, 1.0),
+            Color::Red => graphics::Color::from_rgba(255, 0, 0, 1.0),
+            Color::Blue => graphics::Color::from_rgba(0, 0, 255, 1.0),
+            Color::Pink => graphics::Color::from_rgba(255, 0, 255, 1.0),
+            Color::White => graphics::Color::from_rgba(255, 255, 255, 1.0),
+            Color::Aqua => graphics::Color::from_rgba(0, 173, 254, 1.0),
         }
     }
 }
@@ -743,42 +747,34 @@ impl Grid {
         false
     }
 
-    fn draw_bones(&self, ctx: &mut Context, bones: &[Bone], draw_mode: graphics::DrawMode) -> GameResult<()> { // bones is a slice of either a vec or an array
-        let mesh = &mut graphics::MeshBuilder::new(); // apply new rect meshes to this mesh, faster than drawing each individual rectangle
-
+    fn draw_bones(&self, window: &mut Window, bones: &[Bone]) -> Result<()> { // bones is a slice of either a vec or an array
         for bone in bones.iter() {
-            let rect = mesh.rectangle(
-                    draw_mode, 
-                    graphics::Rect::new(
-                        ((bone.coord.x) * get_pixel_size()).into(),
-                        ((bone.coord.y) * get_pixel_size()).into(),
-                        get_pixel_size().into(),
-                        get_pixel_size().into(),
-                    ), 
-                    bone.color.into(),
-                ).build(ctx)?;
-            graphics::draw(ctx, &rect, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+            let rect: Rectangle = Rectangle::new(
+                (bone.coord.x * get_pixel_size(),  bone.coord.y * get_pixel_size()),
+                (get_pixel_size(), get_pixel_size()),
+            );
+            window.draw(&rect, graphics::Background::Col(bone.color.into()));
         }
-        if let graphics::DrawMode::Fill(_) = draw_mode {
-            let mesh = &mut graphics::MeshBuilder::new();
-            for bone in bones.iter() {
-                let rect = mesh.rectangle(
-                        graphics::DrawMode::stroke(2.0), 
-                        graphics::Rect::new(
-                            ((bone.coord.x) * get_pixel_size()).into(),
-                            ((bone.coord.y) * get_pixel_size()).into(),
-                            get_pixel_size().into(),
-                            get_pixel_size().into(),
-                        ), 
-                        Color::Black.into(),
-                    ).build(ctx)?;
-                graphics::draw(ctx, &rect, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
-            }
-        }
+        // if let graphics::DrawMode::Fill(_) = draw_mode {
+        //     let mesh = &mut graphics::MeshBuilder::new();
+        //     for bone in bones.iter() {
+        //         let rect = mesh.rectangle(
+        //                 graphics::DrawMode::stroke(2.0), 
+        //                 graphics::Rect::new(
+        //                     ((bone.coord.x) * get_pixel_size()).into(),
+        //                     ((bone.coord.y) * get_pixel_size()).into(),
+        //                     get_pixel_size().into(),
+        //                     get_pixel_size().into(),
+        //                 ), 
+        //                 Color::Black.into(),
+        //             ).build(window)?;
+        //         graphics::draw(window, &rect, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+        //     }
+        // }
         Ok(())
     }
 
-    fn draw_grid(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw_grid(&mut self, window: &mut Window) -> Result<()> {
         let blocks = &mut self.blocks.data; 
         let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
                 if let Some(block) = block {
@@ -793,13 +789,15 @@ impl Grid {
         )
         .collect();
 
-        self.draw_bones(ctx, &bones, graphics::DrawMode::fill())?;
+        // self.draw_bones(window, &bones, graphics::DrawMode::fill())?;
+        self.draw_bones(window, &bones)?;
 
         Ok(())
     }
 
-    fn draw_curr_piece(&mut self, ctx: &mut Context) -> GameResult<()> {
-        self.draw_bones(ctx, &self.curr_piece.bones, graphics::DrawMode::fill())
+    fn draw_curr_piece(&mut self, window: &mut Window) -> Result<()> {
+        // self.draw_bones(window, &self.curr_piece.bones, graphics::DrawMode::fill())
+        self.draw_bones(window, &self.curr_piece.bones)
     }
 
     fn shadow_distance(&self, piece: &Tetrinome) -> usize {
@@ -822,12 +820,13 @@ impl Grid {
         }
     }
 
-    fn draw_shadow(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw_shadow(&mut self, window: &mut Window) -> Result<()> {
         let mut shadow_piece = self.curr_piece.clone();
         for _ in 0..self.shadow_distance(&shadow_piece) {
             shadow_piece.trans_change(&Direction::Down.into());
         }
-        self.draw_bones(ctx, &shadow_piece.bones, graphics::DrawMode::stroke(1.0))?;
+        // self.draw_bones(window, &shadow_piece.bones, graphics::DrawMode::stroke(1.0))?;
+        self.draw_bones(window, &shadow_piece.bones)?;
         Ok(())
     }
 
@@ -862,20 +861,21 @@ impl Grid {
         }
     }
     
-    fn draw_drop(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw_drop(&mut self, window: &mut Window) -> Result<()> {
         if let Some(instant_drop) = &mut self.instant_drop {
             let bones = instant_drop.piece.bones;
-            self.draw_bones(ctx, &bones, graphics::DrawMode::fill())?;
+            // self.draw_bones(window, &bones, graphics::DrawMode::fill())?;
+            self.draw_bones(window, &bones)?;
         }
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        self.draw_grid(ctx)?;
-        self.draw_shadow(ctx)?;
+    fn draw(&mut self, window: &mut Window) -> Result<()> {
+        self.draw_grid(window)?;
+        self.draw_shadow(window)?;
         self.animate_drop();
-        self.draw_drop(ctx)?;
-        self.draw_curr_piece(ctx)
+        self.draw_drop(window)?;
+        self.draw_curr_piece(window)
     }
 }
 
@@ -900,7 +900,7 @@ struct Game {
 }
 
 impl Game {
-    fn new(_ctx: &mut Context, grid: Grid, timing: Timing) -> Self {
+    fn init(grid: Grid, timing: Timing) -> Self {
         Game {
             grid,
             timing,
@@ -908,8 +908,50 @@ impl Game {
     }
 }
 
-impl EventHandler for Game {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
+impl State for Game {
+    fn new() -> Result<Self> {
+        let pieces: [Tetrinome; NUM_PIECES] = [
+            Tetrinome::from_piece(PieceKind::I),
+            Tetrinome::from_piece(PieceKind::O),
+            Tetrinome::from_piece(PieceKind::L),
+            Tetrinome::from_piece(PieceKind::T),
+            Tetrinome::from_piece(PieceKind::Z),
+            Tetrinome::from_piece(PieceKind::S),
+            Tetrinome::from_piece(PieceKind::J),
+        ];
+        unsafe {
+            PIECES = Some(pieces);
+        }
+
+        // // determine pixel size based on display height
+        // unsafe {
+        //     let display_height = event::EventsLoop::new().get_primary_monitor().get_dimensions().height;
+        //     PIXEL_SIZE = Some((display_height * 0.9) as i16 / GRID_HEIGHT);
+        // }
+        
+        let grid = Grid::new();
+        let timing = Timing::new(Instant::now(), Instant::now());
+
+        // create event handler instance
+        let game = Self::init(grid, timing);
+        Ok(game)
+    }
+
+    fn event(&mut self, event: &Event, _window: &mut Window) -> Result<()> {
+        if let Event::Key(key, button_state) = event {
+            if let ButtonState::Pressed = button_state {
+                let key = *key;
+                match key {
+                    Key::Space => self.grid.finish_drop(),
+                    Key::Q => self.grid.blocks.clear(),
+                    _ => {self.grid.move_if(key.into(), key.into());},
+                };
+            }
+        }
+        Ok(())
+    } 
+
+    fn update(&mut self, _window: &mut Window) -> Result<()> {
         if Instant::now() - self.timing.last_update >= Duration::from_millis(MILLIS_PER_UPDATE.into()) {
             self.grid.blocks.finish_clear(); // checks whether there are lines to clear
 
@@ -922,50 +964,37 @@ impl EventHandler for Game {
 
             self.timing.last_update = Instant::now();
         }
-        Ok(())
-    }
-
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::clear(ctx, Color::Black.into());
-
-        self.grid.draw(ctx)?;
-
-        graphics::present(ctx)?;
-
-        ggez::timer::yield_now();
 
         Ok(())
     }
 
-    /// key_down_event gets fired when a key gets pressed.
-    fn key_down_event (
-        &mut self,
-        _ctx: &mut Context,
-        keycode: KeyCode,
-        _keymod: KeyMods,
-        _repeat: bool,
-    ) {
-        match keycode {
-           KeyCode::Space => self.grid.finish_drop(),
-           KeyCode::Q => self.grid.blocks.clear(),
-           _ => {self.grid.move_if(keycode.into(), keycode.into());},
-        }
+    fn draw(&mut self, window: &mut Window) -> Result<()> {
+        window.clear(Color::Black.into())?;
+
+        self.grid.draw(window)?;
+
+        Ok(())
     }
 }
 
 const GRID_WIDTH: i16 = 10;
 const GRID_HEIGHT: i16 = 20;
 const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
-static mut PIXEL_SIZE: Option<i16> = None;
-// prevents having to put "unsafe" anywhere where PIXEL_SIZE is needed
+const SCREEN_HEIGHT: i16 = 800;
+const PIXEL_SIZE: i16 = SCREEN_HEIGHT as i16 / GRID_HEIGHT;
+const SCREEN_SIZE: Vector = Vector{x: (GRID_WIDTH * PIXEL_SIZE) as f32, y: SCREEN_HEIGHT as f32};
+// // prevents having to put "unsafe" anywhere where PIXEL_SIZE is needed
+// fn get_pixel_size() -> i16 {
+//     unsafe {
+//         if let Some(pixel_size) = PIXEL_SIZE {
+//             pixel_size
+//         } else {
+//             panic!("pixel size not initialized!");
+//         }
+//     }
+// }
 fn get_pixel_size() -> i16 {
-    unsafe {
-        if let Some(pixel_size) = PIXEL_SIZE {
-            pixel_size
-        } else {
-            panic!("pixel size not initialized!");
-        }
-    }
+    PIXEL_SIZE
 }
 
 // Here we're defining how many quickly we want our game to update.
@@ -975,37 +1004,6 @@ const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
 
 const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
 
-fn main() ->GameResult<()> {
-    let pieces: [Tetrinome; NUM_PIECES] = [
-        Tetrinome::from_piece(PieceKind::I),
-        Tetrinome::from_piece(PieceKind::O),
-        Tetrinome::from_piece(PieceKind::L),
-        Tetrinome::from_piece(PieceKind::T),
-        Tetrinome::from_piece(PieceKind::Z),
-        Tetrinome::from_piece(PieceKind::S),
-        Tetrinome::from_piece(PieceKind::J),
-    ];
-    unsafe {
-        PIECES = Some(pieces);
-    }
-    
-    let grid = Grid::new();
-    let timing = Timing::new(Instant::now(), Instant::now());
-
-    // determine pixel size based on display height
-    unsafe {
-        let display_height = event::EventsLoop::new().get_primary_monitor().get_dimensions().height;
-        PIXEL_SIZE = Some((display_height * 0.9) as i16 / GRID_HEIGHT);
-    }
-
-    // Make a Context. vsync enabled by default
-    let (ctx, events_loop) = &mut ContextBuilder::new("Tetrust", "vinceniko")
-        .window_setup(conf::WindowSetup::default().title("Tetrust"))
-        .window_mode(conf::WindowMode::default().dimensions((GRID_WIDTH * get_pixel_size()).into(), (GRID_HEIGHT * get_pixel_size()).into()))
-        .build()?;
-
-    // create event handler instance
-    let game = &mut Game::new(ctx, grid, timing);
-
-    event::run(ctx, events_loop, game)
+fn main() {
+    run::<Game>("Tetrust", SCREEN_SIZE, Default::default());
 }
