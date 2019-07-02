@@ -9,9 +9,7 @@ use quicksilver::{
     lifecycle::{State, Window, run, Event, Settings}
 };
 
-use std::ops::{ Add, AddAssign };
-
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 use rand::distributions::{Distribution, Standard};
 
 use nalgebra::{Vector2, Matrix2};
@@ -20,236 +18,8 @@ mod timing;
 use timing::*;
 mod animation;
 use animation::{FrameTimer, FrameState};
-
-#[derive(Copy, Clone, Debug)]
-struct Coord {
-    x: i16,
-    y: i16
-}
-
-impl Default for Coord {
-    fn default() -> Self {
-        Self{x:0, y:0}
-    }
-}
-
-impl Add for Coord {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        Self {
-            x: self.x + other.x,
-            y: self.y + other.y
-        }
-    }
-}
-
-impl AddAssign for Coord {
-    fn add_assign(&mut self, other: Self) {
-        *self = Self {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-}
-
-impl Coord {
-    fn coord_to_pos(&self, width: i16) -> Pos {
-        Pos (self.x + self.y * width)
-    }
-
-    fn rand_x_offset(x_range: (i16, i16), y: i16) -> Self {
-        let mut rng = thread_rng();
-        let i = rng.gen_range(x_range.0, x_range.1);
-
-        Self {
-            x: i.into(),
-            y: y,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-struct Pos(i16); // grid_index refers to the index in the Board grid array
-
-impl Into<usize> for Pos {
-    fn into(self) -> usize {
-        self.0 as usize
-    }
-}
-
-impl From<usize> for Pos {
-    fn from(num: usize) -> Self {
-        Self (num as i16)
-    }
-}
-
-impl Pos {
-    fn pos_to_coord(&self, width: i16) -> Coord {
-        Coord {
-            x: self.0 % width as i16,
-            y: self.0 / width as i16,
-        }
-    }
-}
-
-#[derive(Debug,Clone)]
-enum Direction {
-    Down,
-    Left, 
-    Right,
-    None
-}
-
-impl From<Key> for Direction {
-    fn from(key: Key) -> Self {
-        match key {
-            // move in a direction
-            Key::Down => Direction::Down,
-            Key::Left => Direction::Left,
-            Key::Right => Direction::Right,
-            _ => Direction::None
-        }
-    }
-}
-
-impl Into<Coord> for Direction {
-    fn into(self) -> Coord {
-        match self {
-            Direction::Down => Coord{x: 0, y: 1} ,
-            Direction::Left => Coord{x: -1, y: 0},
-            Direction::Right => Coord{x: 1, y: 0},
-            Direction::None => Coord::default(),
-        }
-    }
-}
-
-impl Direction {
-    fn opposite(&self) -> Self {
-        match self {
-            Direction::Left => Direction::Right,
-            Direction::Right => Direction::Left,
-            _ => Direction::None,
-        }
-    }
-}
-
-enum Rotation {
-    CW,
-    CCW,
-    None,
-}
-
-// returns a random rotation to init a random Tetrinone
-impl Distribution<Rotation> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Rotation {
-        let i: i16 = rng.gen_range(0,3);
-        match i {
-            0 => Rotation::CW,
-            1 => Rotation::CCW,
-            _ => Rotation::None,
-        }
-    }
-}
-
-impl From<Key> for Rotation {
-    fn from(key: Key) -> Self {
-        match key {
-            // move in a direction
-            Key::Z => Rotation::CCW,
-            Key::X => Rotation::CW,
-            Key::Up => Rotation::CW,
-            _ => Rotation::None
-        }
-    }
-}
-
-impl Rotation {
-    fn to_dir(&self) -> Direction {
-        match self {
-            Rotation::CW => Direction::Right,
-            Rotation::CCW => Direction::Left,
-            _ => Direction::None
-        }
-    }
-}
-
-#[derive(Debug)]
-enum Collision {
-    Left,
-    Right,
-    Under,
-    None,
-}
-
-impl Collision {
-    fn to_dir(&self) -> Direction {
-        match self {
-            Collision::Left => Direction::Left,
-            Collision::Right => Direction::Right,
-            Collision::Under => Direction::Down,
-            Collision::None => Direction::None,
-        }
-    }
-}
-    
-const NUM_COLORS: usize = 8;
-
-#[derive(Copy, Clone, Debug)]
-enum Color {
-    Black,
-    Green,
-    Yellow,
-    Red,
-    Blue,
-    Pink,
-    White,
-    Aqua,
-}
-
-const COLORS: [Color; NUM_COLORS] = [Color::Black, Color::Green, Color::Yellow, Color::Red, Color::Blue, Color::Pink, Color::White, Color::Aqua];
-
-impl Color {
-    fn to_i(&self) -> usize {
-        match self {
-            Color::Black => 0,
-            Color::Green => 1,
-            Color::Yellow => 2,
-            Color::Red => 3,
-            Color::Blue => 4,
-            Color::Pink => 5,
-            Color::White => 6,
-            Color::Aqua => 7,
-        }
-    }
-
-    fn get_color(i: usize) -> Color {
-        COLORS[(i + 1) % NUM_COLORS]
-    }
-
-    fn _next_color(i: usize) -> Color {
-        Self::get_color(i)
-    }
-
-    fn next_color(&self) -> Color {
-        Color::_next_color(self.to_i())
-    }
-}
-
-impl Into<graphics::Color> for Color {
-    fn into(self) -> graphics::Color {
-        match self {
-            Color::Black => graphics::Color::from_rgba(0, 0, 0, 1.0),
-            Color::Green => graphics::Color::from_rgba(0, 255, 34, 1.0),
-            Color::Yellow => graphics::Color::from_rgba(255, 255, 0, 1.0),
-            Color::Red => graphics::Color::from_rgba(255, 0, 0, 1.0),
-            Color::Blue => graphics::Color::from_rgba(0, 0, 255, 1.0),
-            Color::Pink => graphics::Color::from_rgba(255, 0, 255, 1.0),
-            Color::White => graphics::Color::from_rgba(255, 255, 255, 1.0),
-            Color::Aqua => graphics::Color::from_rgba(0, 173, 254, 1.0),
-        }
-    }
-}
+mod primitives;
+use primitives::{Coord, Pos, Direction, Rotation, Collision, Color};
 
 #[derive(Copy, Clone, Debug)]
 struct Bone {
@@ -453,7 +223,7 @@ impl Tetrinome {
     }
 }
 
-// returns a random tetrinome with a random 1 step rotation in either direction but not translated
+// returns a random tetrinome with a random 1 step rotation in either direction but not translated (width needed to translate)
 impl Distribution<Tetrinome> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tetrinome {
         let i = rng.gen_range(0, NUM_PIECES) as usize;
@@ -609,7 +379,7 @@ impl Blocks {
                     break; // preliminary break if empty row found
                 }
             }
-            self.rows_full.remove(0); // dequeu from front
+            self.rows_full.remove(0); // dequeu from front, doesn't cause deallocation, refer to: https://doc.rust-lang.org/std/vec/struct.Vec.html#guarantees
         }
     }
 
@@ -657,11 +427,12 @@ impl Blocks {
             } else if let None = self.get_block(coord.coord_to_pos(Grid::WIDTH)) {
                 // empty block
             } else {
+                let rot_dir: Direction = (*rot).clone().into();
                 return match dir {
                     Direction::Down => Collision::Under,
                     Direction::Left => Collision::Left,
                     Direction::Right => Collision::Right,
-                    Direction::None => match rot.to_dir() {
+                    Direction::None => match rot_dir {
                         Direction::Left => Collision::Left,
                         Direction::Right => Collision::Right,
                         _ => Collision::None,
@@ -726,8 +497,8 @@ impl Grid {
         new_piece.trans_change(&dir.clone().into()); // translate new piece based on direction
         new_piece.rotate(&rot); // do rotation
 
-        let col_dir = self.blocks.check_collision(&new_piece, &dir, &rot);
-        match col_dir { // check collision for new piece
+        let col = self.blocks.check_collision(&new_piece, &dir, &rot);
+        match col { // check collision for new piece
             Collision::Under => { 
                 self.commit_piece(); 
                 self.clear_row_if(); 
@@ -736,7 +507,8 @@ impl Grid {
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
                 if let Rotation::CCW | Rotation::CW = rot {
-                    let new_dir = &col_dir.to_dir().opposite();
+                    let col_dir: Direction = col.into();
+                    let new_dir = col_dir.opposite();
                     for _ in 0..new_piece.get_width()/2 {
                         new_piece.trans_change(&new_dir.clone().into());
                     }
