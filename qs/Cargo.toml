@@ -1,0 +1,10 @@
+[package]
+name = "tetrust-quicksilver"
+version = "0.1.0"
+authors = ["vinceniko"]
+edition = "2018"
+
+[dependencies]
+quicksilver = "0.3.15"
+nalgebra = "0.18.0"
+rand = "0.6.5"

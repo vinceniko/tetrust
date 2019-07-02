@@ -1,11 +1,2 @@
-[package]
-name = "tetrust"
-version = "0.1.0"
-authors = ["vinceniko"]
-edition = "2018"
-
-[dependencies]
-# ggez = "0.5.0-rc.2"
-quicksilver = "0.3.15"
-nalgebra = "0.18.0"
-rand = "0.6.5"
+[workspace]
+members = ["ggez", "qs"]

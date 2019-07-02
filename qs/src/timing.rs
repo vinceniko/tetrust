@@ -16,6 +16,7 @@ pub fn get_elapsed() -> f64 {
     }
 }
 
+#[cfg(not(target_arch="wasm32"))]
 use std::time::{Instant};
 
 #[derive(Debug)]
