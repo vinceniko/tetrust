@@ -1,6 +1,6 @@
 # Tetrust
 
-A clone of a famous block breaking game in pure Rust and ggez
+A clone of a famous block breaking game in pure Rust with implementations in ggez and quicksilver
 
 <img src="assets/preview.gif" alt="preview" width="175"/>
 
