@@ -16,6 +16,8 @@ use rand::distributions::{Distribution, Standard};
 
 use nalgebra::{Vector2, Matrix2};
 
+mod timing;
+use timing::*;
 mod animation;
 use animation::{FrameTimer, FrameState};
 
@@ -582,7 +584,7 @@ impl Blocks {
         for some_block in self.data[start..end].iter_mut() {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
-                    let frame_duration = MILLIS_PER_UPDATE * 3.0;
+                    let frame_duration = timing::MILLIS_PER_UPDATE * 3.0;
                     let total_anim_time = 3000.0;
                     let n_frames = total_anim_time / frame_duration;
                     block.bone.color = Color::get_color(i as usize);
@@ -781,7 +783,7 @@ impl Grid {
         let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
                 if let Some(block) = block {
                     if let Some(frame_timer) = &mut block.frame_timer {  // if animatable
-                        block.bone.clear_animate(&frame_timer.state(get_elapsed()));
+                        block.bone.clear_animate(&frame_timer.state(timing::get_elapsed()));
                     }
                     Some(block.bone)
                 } else {
@@ -836,7 +838,7 @@ impl Grid {
         let n_frames = self.shadow_distance(&piece) + 1;
         self.instant_drop = Some(InstantDrop {
             piece: piece.clone(),
-            frame_timer: FrameTimer::equal_sized(n_frames as usize, MILLIS_PER_UPDATE, 0.0),
+            frame_timer: FrameTimer::equal_sized(n_frames as usize, timing::MILLIS_PER_UPDATE, 0.0),
         });
     }
 
@@ -882,58 +884,13 @@ impl Grid {
     }
 }
 
-use std::time::{Instant};
-
-#[derive(Debug)]
-struct Timing {
-    last_update: f64,
-    fall_update: f64,
-    pub fall_rate: f64,
-
-    #[cfg(not(target_arch="wasm32"))]
-    test: Instant,
-}
-
-impl Timing {
-    fn new(fall_rate: f64) -> Self {
-        Timing {
-            last_update: 0.0,
-            fall_update: 0.0,
-            fall_rate,
-
-            #[cfg(not(target_arch="wasm32"))]
-            test: Instant::now()
-        }
-    }
-
-    pub fn update(&mut self) {
-        set_elapsed(MILLIS_PER_UPDATE);
-        self.fall_update += get_elapsed();
-    }
-
-    pub fn fall(&mut self) -> bool {
-        if self.fall_update > self.fall_rate {
-            self.fall_update = 0.0;
-
-            return true
-        }
-        false
-    }
-}
-
-impl Default for Timing {
-    fn default() -> Self {
-        Self::new(SECOND / 2.0)
-    }
-}
-
 struct Game {
     grid: Grid,
-    timing: Timing,
+    timing: timing::Timer,
 }
 
 impl Game {
-    fn init(grid: Grid, timing: Timing) -> Self {
+    fn init(grid: Grid, timing: timing::Timer) -> Self {
         Game {
             grid,
             timing,
@@ -965,7 +922,7 @@ impl State for Game {
         let grid = Grid::new();
 
         // create event handler instance
-        let game = Self::init(grid, Timing::default());
+        let game = Self::init(grid, timing::Timer::default());
         Ok(game)
     }
 
@@ -993,6 +950,7 @@ impl State for Game {
             #[cfg(not(target_arch="wasm32"))]
             {
                 let old_time = self.timing.test;
+                use std::time::{Instant};
                 self.timing.test = Instant::now();
                 println!("{:?}", self.timing.test - old_time);
             }
@@ -1028,28 +986,10 @@ fn get_pixel_size() -> i16 {
     PIXEL_SIZE
 }
 
-const SECOND: f64 = 1000.0;
-const UPDATES_PER_SEC: f64 = 16.0;
-const MILLIS_PER_UPDATE: f64 = SECOND / UPDATES_PER_SEC;
-
-static mut ELAPSED: f64 = MILLIS_PER_UPDATE;
-
-fn set_elapsed(elapsed: f64) {
-    unsafe {
-        ELAPSED = elapsed;
-    }
-}
-
-fn get_elapsed() -> f64 {
-    unsafe {
-        ELAPSED
-    }
-}
-
 fn main() {
     run::<Game>("Tetrust", SCREEN_SIZE, 
         Settings{
-            update_rate: MILLIS_PER_UPDATE,
+            update_rate: timing::MILLIS_PER_UPDATE,
             ..Settings::default()
         }
     );
