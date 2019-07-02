@@ -15,7 +15,7 @@ use rand::distributions::{Distribution, Standard};
 use nalgebra::{Vector2, Matrix2};
 
 mod timing;
-use timing::*;
+use timing::{get_elapsed, Timer, MILLIS_PER_UPDATE};
 mod animation;
 use animation::{FrameTimer, FrameState};
 mod primitives;
@@ -354,7 +354,7 @@ impl Blocks {
         for some_block in self.data[start..end].iter_mut() {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
-                    let frame_duration = timing::MILLIS_PER_UPDATE * 3.0;
+                    let frame_duration = MILLIS_PER_UPDATE * 3.0;
                     let total_anim_time = 3000.0;
                     let n_frames = total_anim_time / frame_duration;
                     block.bone.color = Color::get_color(i as usize);
@@ -555,7 +555,7 @@ impl Grid {
         let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
                 if let Some(block) = block {
                     if let Some(frame_timer) = &mut block.frame_timer {  // if animatable
-                        block.bone.clear_animate(&frame_timer.state(timing::get_elapsed()));
+                        block.bone.clear_animate(&frame_timer.state(get_elapsed()));
                     }
                     Some(block.bone)
                 } else {
@@ -610,7 +610,7 @@ impl Grid {
         let n_frames = self.shadow_distance(&piece) + 1;
         self.instant_drop = Some(InstantDrop {
             piece: piece.clone(),
-            frame_timer: FrameTimer::equal_sized(n_frames as usize, timing::MILLIS_PER_UPDATE, 0.0),
+            frame_timer: FrameTimer::equal_sized(n_frames as usize, MILLIS_PER_UPDATE, 0.0),
         });
     }
 
@@ -658,11 +658,11 @@ impl Grid {
 
 struct Game {
     grid: Grid,
-    timing: timing::Timer,
+    timing: Timer,
 }
 
 impl Game {
-    fn init(grid: Grid, timing: timing::Timer) -> Self {
+    fn init(grid: Grid, timing: Timer) -> Self {
         Game {
             grid,
             timing,
@@ -694,7 +694,7 @@ impl State for Game {
         let grid = Grid::new();
 
         // create event handler instance
-        let game = Self::init(grid, timing::Timer::default());
+        let game = Self::init(grid, Timer::default());
         Ok(game)
     }
 
@@ -761,7 +761,7 @@ fn get_pixel_size() -> i16 {
 fn main() {
     run::<Game>("Tetrust", SCREEN_SIZE, 
         Settings{
-            update_rate: timing::MILLIS_PER_UPDATE,
+            update_rate: MILLIS_PER_UPDATE,
             ..Settings::default()
         }
     );
