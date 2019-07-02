@@ -123,7 +123,12 @@ impl From<Coord> for Direction {
 
 impl From<Collision> for Direction {
     fn from(coll: Collision) -> Self {
-        coll.into()
+        match coll {
+            Collision::Left => Direction::Left,
+            Collision::Right => Direction::Right,
+            Collision::Under => Direction::Down,
+            Collision::None => Direction::None,
+        }
     }
 }
 
