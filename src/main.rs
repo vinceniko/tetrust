@@ -6,15 +6,13 @@ use quicksilver::{
     geom::{Rectangle, Vector}, // Now we need Transform
     graphics,
     input::{Key, ButtonState},
-    lifecycle::{State, Window, run, Event}
+    lifecycle::{State, Window, run, Event, Settings}
 };
 
 use std::ops::{ Add, AddAssign };
 
 use rand::{thread_rng, Rng};
 use rand::distributions::{Distribution, Standard};
-
-use std::time::{Duration, Instant};
 
 use nalgebra::{Vector2, Matrix2};
 
@@ -527,13 +525,13 @@ impl Blocks {
 
     // clears the entire grid
     fn clear(&mut self) {
-        self.data = vec![None.into(); GRID_SIZE as usize];
+        self.data = vec![None.into(); Grid::SIZE as usize];
     }
 
     // returns whether the row is full
     fn row_full(&self, row: &i16) -> bool {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
+        let start = (row * Grid::WIDTH) as usize;
+        let end = start + Grid::WIDTH as usize; 
         for some_block in self.data[start..end].iter() {
             if let None = some_block {
                 return false
@@ -544,8 +542,8 @@ impl Blocks {
 
     // replaces each block in the row with None
     fn clear_row(&mut self, row: &i16) {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize; 
+        let start = (row * Grid::WIDTH) as usize;
+        let end = start + Grid::WIDTH as usize; 
         for some_block in self.data[start..end].iter_mut() {
             if let None = some_block {
             } else {
@@ -560,8 +558,8 @@ impl Blocks {
 
     // returns whether the row is ready to be cleared if all the animations in the row are done
     fn row_ready(&mut self, row: &i16) -> bool {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize;
+        let start = (row * Grid::WIDTH) as usize;
+        let end = start + Grid::WIDTH as usize;
         
         self.data[start..end].iter_mut().filter_map(|some_block| {
             if let Some(block) = some_block {
@@ -577,18 +575,18 @@ impl Blocks {
 
     // initializes the FrameTimer which begins the clearing countdown
     fn start_clear(&mut self, row: &i16) {
-        let start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize;
+        let start = (row * Grid::WIDTH) as usize;
+        let end = start + Grid::WIDTH as usize;
         
         let mut i = 0;
         for some_block in self.data[start..end].iter_mut() {
             if let Some(block) = some_block {
                 if let None = &mut block.frame_timer {
-                    let frame_duration = Duration::from_millis(50);
-                    let total_anim_time = Duration::from_millis(1000);
-                    let n_frames = total_anim_time.as_secs_f64() / frame_duration.as_secs_f64();
+                    let frame_duration = MILLIS_PER_UPDATE * 3.0;
+                    let total_anim_time = 3000.0;
+                    let n_frames = total_anim_time / frame_duration;
                     block.bone.color = Color::get_color(i as usize);
-                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, Duration::default())); // wave effect
+                    block.frame_timer = Some(FrameTimer::equal_sized(n_frames as usize, frame_duration, 0.0)); // wave effect
                     i += 1;
                 }
             }
@@ -623,14 +621,14 @@ impl Blocks {
 
     // drops the given row down
     fn drop_row_down(&mut self, row: &i16) -> i16 {
-        let mut start = (row * GRID_WIDTH) as usize;
-        let end = start + GRID_WIDTH as usize;
+        let mut start = (row * Grid::WIDTH) as usize;
+        let end = start + Grid::WIDTH as usize;
         let mut count = 0;
         for block in self.data.clone()[start..end].iter_mut() {
             if let Some(block) = block {
                 block.bone.coord.y += 1; // coord for drawing
                 self.data[start] = None.into(); // old spot
-                self.data[start + GRID_WIDTH as usize] = Some(block.clone()); // new spot has clone
+                self.data[start + Grid::WIDTH as usize] = Some(block.clone()); // new spot has clone
                 count+=1;
             }
             start+=1;
@@ -649,12 +647,12 @@ impl Blocks {
             // out of bounds
             if coord.x < 0 {
                 return Collision::Left
-            } else if coord.x >= GRID_WIDTH {
+            } else if coord.x >= Grid::WIDTH {
                 return Collision::Right
             }
-            if coord.y >= GRID_HEIGHT {
+            if coord.y >= Grid::HEIGHT {
                 return Collision::Under
-            } else if let None = self.get_block(coord.coord_to_pos(GRID_WIDTH)) {
+            } else if let None = self.get_block(coord.coord_to_pos(Grid::WIDTH)) {
                 // empty block
             } else {
                 return match dir {
@@ -688,10 +686,14 @@ struct Grid {
 }
 
 impl Grid {
+    const WIDTH: i16 = 10;
+    const HEIGHT: i16 = 20;
+    const SIZE: i16 = Self::WIDTH * Self::HEIGHT;
+
     fn new() -> Self {
         Self {
-            blocks: Blocks::new(GRID_WIDTH as usize * GRID_HEIGHT as usize), // init to None (like null ptr)
-            curr_piece: Tetrinome::new(&GRID_WIDTH),
+            blocks: Blocks::new(Grid::WIDTH as usize * Grid::HEIGHT as usize), // init to None (like null ptr)
+            curr_piece: Tetrinome::new(&Grid::WIDTH),
             instant_drop: None,
         }
     }
@@ -699,7 +701,7 @@ impl Grid {
     // commit the piece after a downwards collision 
     fn commit_piece(&mut self) {
         for new_block in self.curr_piece.bones.iter_mut() {
-            let new_pos = new_block.coord.coord_to_pos(GRID_WIDTH); // convert into pos and then usize for indexing
+            let new_pos = new_block.coord.coord_to_pos(Grid::WIDTH); // convert into pos and then usize for indexing
 
             self.blocks.set_block(new_pos, *new_block);
         }
@@ -727,7 +729,7 @@ impl Grid {
             Collision::Under => { 
                 self.commit_piece(); 
                 self.clear_row_if(); 
-                self.curr_piece = Tetrinome::new(&GRID_WIDTH); 
+                self.curr_piece = Tetrinome::new(&Grid::WIDTH); 
                 return true;
             }, // if collided underneath then commit
             Collision::Left | Collision::Right  => {
@@ -779,7 +781,7 @@ impl Grid {
         let bones: Vec<Bone> = blocks.iter_mut().filter_map(|block| { // pull out all bones from Option<Bone>
                 if let Some(block) = block {
                     if let Some(frame_timer) = &mut block.frame_timer {  // if animatable
-                        block.bone.clear_animate(&frame_timer.state());
+                        block.bone.clear_animate(&frame_timer.state(get_elapsed()));
                     }
                     Some(block.bone)
                 } else {
@@ -831,11 +833,10 @@ impl Grid {
     }
 
     fn start_drop(&mut self, piece: Tetrinome) {
-        let frame_duration = Duration::from_millis(5);
         let n_frames = self.shadow_distance(&piece) + 1;
         self.instant_drop = Some(InstantDrop {
             piece: piece.clone(),
-            frame_timer: FrameTimer::equal_sized(n_frames as usize, frame_duration, Duration::default()),
+            frame_timer: FrameTimer::equal_sized(n_frames as usize, MILLIS_PER_UPDATE, 0.0),
         });
     }
 
@@ -851,11 +852,13 @@ impl Grid {
 
     fn animate_drop(&mut self) {
         if let Some(instant_drop) = &mut self.instant_drop {
-            if let FrameState::Ready = &mut instant_drop.frame_timer.state() {
+            let state = instant_drop.frame_timer.state(get_elapsed());
+            
+            if let FrameState::Ready = state {
                 let piece = &mut instant_drop.piece;
                 // piece.bones.iter_mut().for_each(|bone| { if let Color::White = bone.color {bone.color = Color::White;} else { bone.color = Color::Black; } });
                 piece.trans_change(&Direction::Down.into());
-            } else if let FrameState::Done = instant_drop.frame_timer.state() {
+            } else if let FrameState::Done = state {
                 self.instant_drop = None;
             }
         }
@@ -879,18 +882,48 @@ impl Grid {
     }
 }
 
+use std::time::{Instant};
+
 #[derive(Debug)]
 struct Timing {
-    last_update: Instant,
-    fall_update: Instant,
+    last_update: f64,
+    fall_update: f64,
+    pub fall_rate: f64,
+
+    #[cfg(not(target_arch="wasm32"))]
+    test: Instant,
 }
 
 impl Timing {
-    fn new(last_update: Instant, fall_update: Instant) -> Self {
+    fn new(fall_rate: f64) -> Self {
         Timing {
-            last_update,
-            fall_update,
+            last_update: 0.0,
+            fall_update: 0.0,
+            fall_rate,
+
+            #[cfg(not(target_arch="wasm32"))]
+            test: Instant::now()
         }
+    }
+
+    pub fn update(&mut self) {
+        set_elapsed(MILLIS_PER_UPDATE);
+        self.fall_update += get_elapsed();
+    }
+
+    pub fn fall(&mut self) -> bool {
+        if self.fall_update > self.fall_rate {
+            self.fall_update = 0.0;
+
+            return true
+        }
+        false
+    }
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self::new(SECOND / 2.0)
     }
 }
 
@@ -926,14 +959,13 @@ impl State for Game {
         // // determine pixel size based on display height
         // unsafe {
         //     let display_height = event::EventsLoop::new().get_primary_monitor().get_dimensions().height;
-        //     PIXEL_SIZE = Some((display_height * 0.9) as i16 / GRID_HEIGHT);
+        //     PIXEL_SIZE = Some((display_height * 0.9) as i16 / Grid::HEIGHT);
         // }
         
         let grid = Grid::new();
-        let timing = Timing::new(Instant::now(), Instant::now());
 
         // create event handler instance
-        let game = Self::init(grid, timing);
+        let game = Self::init(grid, Timing::default());
         Ok(game)
     }
 
@@ -951,18 +983,20 @@ impl State for Game {
         Ok(())
     } 
 
+    // frames updated every MILLIS_PER_UPDATE
     fn update(&mut self, _window: &mut Window) -> Result<()> {
-        if Instant::now() - self.timing.last_update >= Duration::from_millis(MILLIS_PER_UPDATE.into()) {
-            self.grid.blocks.finish_clear(); // checks whether there are lines to clear
+        self.timing.update();
+        
+        self.grid.blocks.finish_clear(); // checks whether there are lines to clear
 
-            // gravity
-            if Instant::now() - self.timing.fall_update >= Duration::from_millis((FALL_RATE).into()) {
-                self.grid.move_if(Direction::Down, Rotation::None);
-
-                self.timing.fall_update = Instant::now();
+        if self.timing.fall() {
+            #[cfg(not(target_arch="wasm32"))]
+            {
+                let old_time = self.timing.test;
+                self.timing.test = Instant::now();
+                println!("{:?}", self.timing.test - old_time);
             }
-
-            self.timing.last_update = Instant::now();
+            self.grid.move_if(Direction::Down, Rotation::None);
         }
 
         Ok(())
@@ -977,12 +1011,9 @@ impl State for Game {
     }
 }
 
-const GRID_WIDTH: i16 = 10;
-const GRID_HEIGHT: i16 = 20;
-const GRID_SIZE: i16 = GRID_WIDTH * GRID_HEIGHT;
-const SCREEN_HEIGHT: i16 = 800;
-const PIXEL_SIZE: i16 = SCREEN_HEIGHT as i16 / GRID_HEIGHT;
-const SCREEN_SIZE: Vector = Vector{x: (GRID_WIDTH * PIXEL_SIZE) as f32, y: SCREEN_HEIGHT as f32};
+const SCREEN_HEIGHT: i16 = 500;
+const PIXEL_SIZE: i16 = SCREEN_HEIGHT as i16 / Grid::HEIGHT;
+const SCREEN_SIZE: Vector = Vector{x: (Grid::WIDTH * PIXEL_SIZE) as f32, y: SCREEN_HEIGHT as f32};
 // // prevents having to put "unsafe" anywhere where PIXEL_SIZE is needed
 // fn get_pixel_size() -> i16 {
 //     unsafe {
@@ -997,13 +1028,29 @@ fn get_pixel_size() -> i16 {
     PIXEL_SIZE
 }
 
-// Here we're defining how many quickly we want our game to update.
-const UPDATES_PER_SEC: u32 = 16;
-// And we get the milliseconds of delay that this update rate corresponds to.
-const MILLIS_PER_UPDATE: u32 = (1.0 / UPDATES_PER_SEC as f64 * 1000.0) as u32;
+const SECOND: f64 = 1000.0;
+const UPDATES_PER_SEC: f64 = 16.0;
+const MILLIS_PER_UPDATE: f64 = SECOND / UPDATES_PER_SEC;
 
-const FALL_RATE: u32 = MILLIS_PER_UPDATE * 10;
+static mut ELAPSED: f64 = MILLIS_PER_UPDATE;
+
+fn set_elapsed(elapsed: f64) {
+    unsafe {
+        ELAPSED = elapsed;
+    }
+}
+
+fn get_elapsed() -> f64 {
+    unsafe {
+        ELAPSED
+    }
+}
 
 fn main() {
-    run::<Game>("Tetrust", SCREEN_SIZE, Default::default());
+    run::<Game>("Tetrust", SCREEN_SIZE, 
+        Settings{
+            update_rate: MILLIS_PER_UPDATE,
+            ..Settings::default()
+        }
+    );
 }

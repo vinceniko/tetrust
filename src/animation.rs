@@ -1,64 +1,62 @@
-// #![feature(checked_duration_since)] // non-panic'ing version for instant delay checking
-// #![feature(duration_float)] // used to determine the number of frames given a frame time and total duration of an animation
-
-use std::time::{Duration, Instant};
-
 #[derive(Clone, Debug)]
 pub struct FrameTimer {
-    frames: Vec<Duration>,
-    last_update: Instant,
+    frames: Vec<f64>,
+    delay: f64,
+    last_update: f64,
     next: usize,
 }
 
 
 impl FrameTimer {
-    fn init_frameless(delay: Duration) -> Self {
+    fn init_frameless(delay: f64) -> Self {
         Self {
             frames: Vec::default(),
-            last_update: Instant::now() + delay,
+            delay,
+            last_update: 0.0,
             next: 0,
         }
     }
 
-    fn set_frames(mut self, vec: Vec<Duration>) -> Self {
+    fn set_frames(mut self, vec: Vec<f64>) -> Self {
         self.frames = vec;
         return self
     }
 
     #[allow(dead_code)]
-    pub fn from_vec(frames: Vec<Duration>, delay: Duration) -> Self {
+    pub fn from_vec(frames: Vec<f64>, delay: f64) -> Self {
         Self::init_frameless(delay).set_frames(frames)
     }
 
     // n frames of equal duration
-    pub fn equal_sized(n_frames: usize, duration: Duration, delay: Duration) -> Self {
+    pub fn equal_sized(n_frames: usize, duration: f64, delay: f64) -> Self {
         let frames = vec![duration; n_frames];
         Self::init_frameless(delay).set_frames(frames)
     }
 
     // update self.last_update to now
-    fn set_update(&mut self) {
-        self.last_update = Instant::now();
+    fn set_update(&mut self, elapsed: f64) {
+        self.last_update += elapsed;
     }
 
     // returns the state of the current frame and advances to the next frame if the state was ready
-    pub fn state(&mut self) -> FrameState {
+    pub fn state(&mut self, elapsed: f64) -> FrameState {
         if self.is_done() {
             return FrameState::Done
         }
 
+        self.set_update(elapsed);
+
         let curr_frame = &self.frames[self.next];
 
         if self.next == 0 {
-            if let None = self.last_update.checked_duration_since(Instant::now()) { // for creating a delay before playing the animation. ie. do not play if now is before the initial last_update
+            if self.last_update > self.delay { // for creating a delay before playing the animation. ie. do not play if now is before the initial last_update
                 self.next += 1;
-                self.set_update();
+                self.last_update = 0.0;
                 return FrameState::Ready
             }
-        } else if Instant::now() - self.last_update >= *curr_frame {
+        } else if self.last_update >= *curr_frame {
             self.next += 1;
-            self.set_update();
-            
+            self.last_update = 0.0;
             return FrameState::Ready
         }
         FrameState::Waiting
@@ -73,10 +71,10 @@ impl FrameTimer {
         let curr_frame = &self.frames[self.next];
 
         if self.next == 0 {
-            if let None = self.last_update.checked_duration_since(Instant::now()) { // for creating a delay before playing the animation. ie. do not play if now is before the initial last_update
+            if self.last_update > self.delay { // for creating a delay before playing the animation. ie. do not play if now is before the initial last_update
                 return FrameState::Ready
             }
-        } else if Instant::now() - self.last_update >= *curr_frame {            
+        } else if self.last_update >= *curr_frame {            
             return FrameState::Ready
         }
         FrameState::Waiting
