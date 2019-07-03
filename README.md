@@ -1,14 +1,21 @@
 # Tetrust
 
-A clone of a famous block breaking game in pure Rust with implementations in ggez and quicksilver
+A clone of a famous block breaking game in pure Rust first implemented in ggez and then ported to quicksilver. The quicksilver implementation is more up to date and complete.
 
 <img src="assets/preview.gif" alt="preview" width="175"/>
 
-## Installation
+## Running
+
+### Desktop
 
 1. git clone the repo
 2. Install rust
-3. cargo run
+3. `cargo run -p tetrust-ggez` or `cargo run -p tetrust-quicksilver`
+
+### Web
+
+1. Install cargo web and run `cargo web start -p tetrust-quicksilver`
+2. Navigate to output address in browser
 
 ## Controls
 
